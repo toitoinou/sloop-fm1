@@ -190,6 +190,18 @@ void se_synth_step(int track, int step, const uint8_t *notes, int n, int velocit
     s.vel = (uint8_t)clamp(velocity, 1, 127);
     put_step(track, step, &s, nudge, fill);
 }
+void se_synth_step_cont(int track, int step, const uint8_t *notes, int n, unsigned cont, int velocity, int ratchet,
+                        int nudge, int fill)
+{
+    se_synth_step(track, step, notes, n, velocity, ratchet, nudge, fill);
+    /* (preview_step keeps only ACCENT and SLIDE: the continuations go in here) */
+    if (track >= 0 && track < NPART && step >= 0 && step < NSTEP && n > 0)
+        trk[track].step[step].flags |= (uint8_t)((cont & ((1u << clamp(n, 0, 4)) - 1u)) * SF_CONT0);
+}
+int se_step_flags(int track, int step)
+{
+    return track >= 0 && track < NPART && step >= 0 && step < NSTEP ? trk[track].step[step].flags : 0;
+}
 void se_set_locks(int track, const se_lock_t *locks, int count)
 {
     int j;

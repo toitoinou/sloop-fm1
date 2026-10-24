@@ -48,6 +48,22 @@ struct ClipData
     std::array<StepData, kSteps> notes {};                       // a synth track
     std::array<LockData, kMaxLocks> locks {};                    // parameter locks, any sound parameter
     uint8_t nLocks = 0;
+    std::array<std::array<uint8_t, kRows>, kSteps> noteLen {};   // a synth note's length in steps ([start][row]; 0, 1: one)
+
+    // a synth note held over several steps: it starts on a step (its row's bit) and lasts noteLength steps
+    int noteLength (int step, int row) const { return juce::jmax (1, (int) noteLen[(size_t) step][(size_t) row]); }
+    int noteStart (int row, int step) const          // the first step of the note of `row` sounding on `step`, else -1
+    {
+        for (int s = step; s >= 0; --s)
+            if (notes[(size_t) s].rows >> row & 1) return s + noteLength (s, row) > step ? s : -1;
+        return -1;
+    }
+    int maxLength (int row, int start) const         // up to the row's next note, or the clip's end
+    {
+        int s = start + 1;
+        while (s < length && ! (notes[(size_t) s].rows >> row & 1)) ++s;
+        return s - start;
+    }
 
     int16_t lock (int step, int param) const
     {
@@ -171,6 +187,8 @@ inline Session demoSession()
     s.at (1, 0) = bass; s.at (1, 1) = bass2;
     auto keys = Session::newClip (2, "Accords");
     notes (keys.data, 0, { 7, 9, 11 }, 80); notes (keys.data, 8, { 5, 7, 9 }, 80);
+    for (int r : { 7, 9, 11 }) keys.data.noteLen[0][(size_t) r] = 6;    // held chords
+    for (int r : { 5, 7, 9 }) keys.data.noteLen[8][(size_t) r] = 6;
     s.at (2, 0) = keys; s.at (2, 1) = keys; s.at (2, 2) = keys;
     auto lead = Session::newClip (3, "Motif");
     notes (lead.data, 2, { 4 }, 100); notes (lead.data, 5, { 6 }, 90); notes (lead.data, 10, { 7 }, 100);

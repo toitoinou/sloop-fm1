@@ -35,7 +35,15 @@ juce::var clipVar (const Clip& c)
                 if (c.data.lanes[(size_t) l][(size_t) s].on) steps.add (stepVar (s, l, c.data.lanes[(size_t) l][(size_t) s]));
         }
         else if (c.data.notes[(size_t) s].rows != 0)
-            steps.add (stepVar (s, c.data.notes[(size_t) s].rows, c.data.notes[(size_t) s]));
+        {
+            auto v = stepVar (s, c.data.notes[(size_t) s].rows, c.data.notes[(size_t) s]);
+            juce::Array<juce::var> lens;                  // [row, length] of the notes longer than a step
+            for (int r = 0; r < kRows; ++r)
+                if ((c.data.notes[(size_t) s].rows >> r & 1) && c.data.noteLength (s, r) > 1)
+                    lens.add (juce::Array<juce::var> { r, c.data.noteLength (s, r) });
+            if (! lens.isEmpty()) v.append (lens);
+            steps.add (v);
+        }
     }
     for (int i = 0; i < c.data.nLocks; ++i)
     {
@@ -55,6 +63,7 @@ std::optional<Clip> readClip (const juce::var& v, int track)
     if (auto* steps = v["steps"].getArray())
         for (auto& st : *steps)
         {
+            if (! st.isArray() || st.size() < 7) continue;     // (a damaged file: what can be read is kept)
             const int s = (int) st[0], b = (int) st[1];
             if (s < 0 || s >= kSteps) continue;
             if (c.data.drum)
@@ -70,11 +79,16 @@ std::optional<Clip> readClip (const juce::var& v, int track)
                 x.rows = (uint16_t) (b & 0xFFFF);
                 x.on = x.rows != 0;
                 readStep (st, x);
+                for (int r = 0; r < kRows; ++r) if (x.rows >> r & 1) c.data.noteLen[(size_t) s][(size_t) r] = 1;
+                if (auto* lens = st.size() > 7 ? st[7].getArray() : nullptr)
+                    for (auto& l : *lens)
+                        if (l.isArray() && l.size() >= 2 && (int) l[0] >= 0 && (int) l[0] < kRows)
+                            c.data.noteLen[(size_t) s][(size_t) (int) l[0]] = (uint8_t) juce::jlimit (1, kSteps - s, (int) l[1]);
             }
         }
     if (auto* locks = v["locks"].getArray())
         for (auto& l : *locks)
-            if ((int) l[0] >= 0 && (int) l[0] < kSteps && (int) l[1] >= 0 && (int) l[1] < kParamSlots)
+            if (l.isArray() && l.size() >= 3 && (int) l[0] >= 0 && (int) l[0] < kSteps && (int) l[1] >= 0 && (int) l[1] < kParamSlots)
                 c.data.setLock ((int) l[0], (int) l[1], (int) l[2]);
     return c;
 }

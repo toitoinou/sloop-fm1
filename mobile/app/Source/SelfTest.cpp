@@ -2,6 +2,7 @@
 // SLOOP Touch --selftest: the audio side without a device (48 kHz, 256-frame blocks, as many phones): the demo
 // session plays, a clip waits for the bar, a chain takes turns, the sound is not silent. Exit code 0 = passed.
 #include "Controller.h"
+#include "sloop_engine.h"
 
 namespace sloop
 {
@@ -71,6 +72,22 @@ int runSelfTest()
     ctl.setKnob (0, defs[0].min + 5);
     check (ctl.editClip()->data.lock (4, SE_P_E0) == defs[0].min + 5, "a held step locks any parameter");
     ctl.held.clear();
+    ctl.select (0);
+
+    // a long note in the piano roll: held over its steps, not played again on each one
+    ctl.launch (1, 0);                                    // T1: one clip again (not the chain above)
+    run (bar * 1.2);
+    ctl.poll();
+    ctl.select (1);
+    ctl.editSlot[1] = 0;
+    ctl.toggleStep (9, 1, true);                          // row 9, step 2 (empty in the demo's bass lines)
+    ctl.setNoteLength (9, 1, 3);
+    check (ctl.noteAt (9, 3) == 1 && ctl.noteAt (9, 4) == -1 && ctl.editClip()->data.noteLength (1, 9) == 3,
+           "a note stretched over three steps");
+    run (0.1);                                            // (an edit of the clip that plays goes in at once)
+    check ((se_step_flags (0, 2) & 0x78) != 0 && (se_step_flags (0, 3) & 0x78) != 0 && (se_step_flags (0, 1) & 0x78) == 0,
+           "its next steps go on from the first (held), not played again");
+    ctl.toggleStep (9, 1, false);
     ctl.select (0);
 
     ctl.toggleRecord();                                   // REC: a pad played goes into the playing clip

@@ -103,6 +103,7 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [ ] Longueur des clips par piste (8 à 64 pas) pour des boucles décalées.
 - [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
 - [x] Enregistrer ses sessions : projets dans l'appli, sauvegarde automatique, export / import `.sloop`.
+- [x] Notes tenues dans la vue Notes : glisser une note l'allonge (elle tient, au lieu d'être rejouée à chaque pas).
 - [ ] Note repeat, métronome, quantification réglable.
 - [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
 - [ ] Une piste guitare (NAM / TONE3000).

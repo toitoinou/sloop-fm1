@@ -96,6 +96,7 @@ private:
     juce::Rectangle<int> gridArea() const { return getLocalBounds().withTrimmedTop (headH + theme::gap); }
     int labelW() const { return narrow() ? 62 : 84; }
     bool cellAt (juce::Point<int>, int& row, int& step) const;
+    int columnAt (int x) const;                      // the step under x (clamped to the visible ones)
     int labelAt (juce::Point<int>) const;
     void preview (int row);
 
@@ -103,7 +104,7 @@ private:
     std::function<void (int, int)> onSheet;
     juce::TextButton lanes1 { "Sons 1-8" }, lanes2 { "9-16" }, steps1 { "Pas 1-8" }, steps2 { "9-16" };
     int lanePage = 0, stepPage = 0;
-    struct Pointer { int row, step; juce::Point<int> at; enum Mode { pressing, painting, velocity } mode = pressing;
+    struct Pointer { int row, step; juce::Point<int> at; enum Mode { pressing, painting, velocity, stretching } mode = pressing;
                      bool created = false, sheet = false, value = false; int vel0 = 100; double time = 0; };
     std::map<int, Pointer> pointers;
     static constexpr int headH = 34;

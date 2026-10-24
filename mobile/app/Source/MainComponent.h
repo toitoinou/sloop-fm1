@@ -18,6 +18,7 @@ public:
     {
         if (name.startsWith ("sound")) { ctl.select (name.getTrailingIntValue() % kTracks); openSound(); return; }
         if (name == "project") { openProject(); return; }
+        if (name.startsWith ("notes")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::grid); return; }
         if (name.startsWith ("track")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
         showTab (name == "grid" ? Tab::grid : name == "pads" ? Tab::pads : Tab::session);
     }

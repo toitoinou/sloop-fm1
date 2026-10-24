@@ -320,14 +320,24 @@ void AudioEngine::writeSteps (int t, int onlyStep, int skipStep)
         }
         else
         {
+            // the notes going on from an earlier step (a long note) first, held; then the ones starting here
             uint8_t notes[4];
             int n = 0;
+            unsigned cont = 0;
             const StepData* x = c != nullptr ? &c->notes[(size_t) step] : nullptr;
-            if (x != nullptr && x->rows != 0 && stepPlays (s, *x, 0, step))
+            if (c != nullptr)
+                for (int r = 0; r < kRows && n < 4; ++r)
+                    if (const int st = c->noteStart (r, step); st >= 0 && st < step && stepPlays (s, c->notes[(size_t) st], 0, st))
+                    {
+                        cont |= 1u << n;
+                        notes[n++] = (uint8_t) rowNote (t, r);
+                    }
+            const bool starts = x != nullptr && x->rows != 0 && stepPlays (s, *x, 0, step);
+            if (starts)
                 for (int r = 0; r < kRows && n < 4; ++r)
                     if (x->rows >> r & 1) notes[n++] = (uint8_t) rowNote (t, r);
-            se_synth_step (et, step, notes, n, x != nullptr ? x->vel : 100, x != nullptr ? x->ratchet : 1,
-                           x != nullptr ? microOf (x->nudge) : 0, SE_FILL_ANY);
+            se_synth_step_cont (et, step, notes, n, cont, starts ? x->vel : 100, starts && cont == 0 ? x->ratchet : 1,
+                                starts ? microOf (x->nudge) : 0, SE_FILL_ANY);
         }
     }
     if (onlyStep >= 0) return;

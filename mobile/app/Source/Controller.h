@@ -251,8 +251,23 @@ public:
             auto& x = d.notes[(size_t) step];
             x.rows = (uint16_t) (on ? x.rows | 1 << row : x.rows & ~(1 << row));
             x.on = x.rows != 0;
+            d.noteLen[(size_t) step][(size_t) row] = on ? 1 : 0;
         }
         clipEdited (sel, editSlot[(size_t) sel]);
+    }
+    int noteAt (int row, int step)                       // the start of the note sounding there (piano roll), else -1
+    {
+        auto* c = editClip();
+        return c != nullptr && ! c->data.drum ? c->data.noteStart (row, step) : -1;
+    }
+    void setNoteLength (int row, int start, int len)
+    {
+        auto* c = editClip();
+        if (c == nullptr || c->data.drum) return;
+        len = juce::jlimit (1, c->data.maxLength (row, start), len);
+        if (c->data.noteLength (start, row) == len) return;
+        c->data.noteLen[(size_t) start][(size_t) row] = (uint8_t) len;
+        stepChanged();
     }
     StepData* step (int row, int s)
     {
@@ -398,10 +413,13 @@ public:
         if (d.drum) { auto& x = d.lanes[(size_t) row][(size_t) step]; x.on = 1; x.vel = (uint8_t) velocity; }
         else
         {
+            if (const int st = d.noteStart (row, step); st >= 0 && st < step)   // a held note there ends before it
+                d.noteLen[(size_t) st][(size_t) row] = (uint8_t) (step - st);
             auto& x = d.notes[(size_t) step];
             x.rows = (uint16_t) (x.rows | 1 << row);
             x.on = 1;
             x.vel = (uint8_t) velocity;
+            d.noteLen[(size_t) step][(size_t) row] = 1;
         }
         if (late) pendingRecord.push_back ({ t, slot, step });   // (it already sounded: not twice)
         else clipEdited (t, slot);

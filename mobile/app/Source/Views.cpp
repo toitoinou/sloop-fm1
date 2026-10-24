@@ -398,6 +398,12 @@ bool StepGrid::cellAt (juce::Point<int> p, int& row, int& step) const
     step = firstStep() + ci;
     return true;
 }
+int StepGrid::columnAt (int x) const
+{
+    auto a = gridArea();
+    const float cw = (float) (a.getWidth() - labelW()) / (float) visibleSteps();
+    return firstStep() + juce::jlimit (0, visibleSteps() - 1, (int) std::floor ((float) (x - a.getX() - labelW()) / cw));
+}
 int StepGrid::labelAt (juce::Point<int> p) const
 {
     auto a = gridArea();
@@ -450,11 +456,15 @@ void StepGrid::paint (juce::Graphics& g)
         {
             const int s = firstStep() + v;
             auto r = juce::Rectangle<float> ((float) (a.getX() + labelW()) + (float) v * cw, (float) a.getY() + (float) i * rh, cw - (float) theme::gap, rh - (float) theme::gap);
-            const auto& x = d.drum ? d.lanes[(size_t) row][(size_t) s] : d.notes[(size_t) s];
-            const bool on = d.stepOn (row, s);
+            // a synth note held over several steps is drawn as one bar: its first step carries the marks
+            const int start = d.drum ? (d.stepOn (row, s) ? s : -1) : d.noteStart (row, s);
+            const auto& x = d.drum ? d.lanes[(size_t) row][(size_t) s] : d.notes[(size_t) juce::jmax (0, start)];
+            const bool on = start >= 0, first = start == s;
             g.setColour (on ? mixed (col, 0.35f + 0.65f * x.vel / 127.0f) : (s % 4 == 0 ? theme::cellBeat : theme::cell));
             g.fillRoundedRectangle (r, 2.0f);
-            if (on)
+            if (on && ! first && v > 0) g.fillRect (r.withX (r.getX() - (float) theme::gap - 2.0f).withWidth ((float) theme::gap + 4.0f));
+            if (on && ! first && v == 0) { g.setColour (theme::ink.withAlpha (0.5f)); g.drawText ("<", r, juce::Justification::centredLeft); }
+            if (first)
             {
                 if (d.hasLocks (s)) { g.setColour (theme::ink); g.fillEllipse (r.getRight() - 9, r.getY() + 3, 6, 6); }
                 if (x.prob < 100 || x.cond != Cond::always)
@@ -476,7 +486,7 @@ void StepGrid::paint (juce::Graphics& g)
                 }
             }
             for (auto& [_, pt] : pointers)
-                if (pt.mode == Pointer::pressing && pt.row == row && pt.step == s)
+                if ((pt.mode == Pointer::pressing || pt.mode == Pointer::stretching) && pt.row == row && pt.step == s)
                 {
                     g.setColour (theme::fg);
                     g.drawRoundedRectangle (r.expanded (1.0f), 2.0f, 2.0f);
@@ -512,12 +522,13 @@ void StepGrid::mouseDown (const juce::MouseEvent& e)
     if (! cellAt (e.getPosition(), row, step) || ctl.editClip() == nullptr) return;
     Pointer p { row, step, e.getPosition() };
     p.time = now();
-    p.created = ! ctl.editClip()->data.stepOn (row, step);
+    if (const int start = ctl.noteAt (row, step); start >= 0) p.step = start;   // (piano roll: on a long note, its start)
+    p.created = ! ctl.editClip()->data.stepOn (row, p.step);
     if (p.created) { ctl.toggleStep (row, step, true); preview (row); }
-    if (auto* x = ctl.step (row, step)) p.vel0 = x->vel;
+    if (auto* x = ctl.step (row, p.step)) p.vel0 = x->vel;
     if (isDrum (ctl.sel)) ctl.lane = row;
     if (ctl.held.empty()) ctl.lockedSinceHold = false;
-    ctl.held.push_back ({ row, step });
+    ctl.held.push_back ({ row, p.step });
     pointers[e.source.getIndex()] = p;
     ctl.notify();
 }
@@ -533,6 +544,7 @@ void StepGrid::mouseDrag (const juce::MouseEvent& e)
         auto h = std::find (ctl.held.begin(), ctl.held.end(), std::make_pair (p.row, p.step));
         if (h != ctl.held.end()) ctl.held.erase (h);
         if (isDrum (ctl.sel) && ! p.created && std::abs (d.y) > std::abs (d.x)) p.mode = Pointer::velocity;
+        else if (! isDrum (ctl.sel)) p.mode = Pointer::stretching;   // piano roll: a drag sets the note's length
         else
         {
             p.mode = Pointer::painting;
@@ -546,6 +558,8 @@ void StepGrid::mouseDrag (const juce::MouseEvent& e)
             x->vel = (uint8_t) juce::jlimit (10, 127, p.vel0 - d.y * 127 / 150);
             ctl.stepChanged();
         }
+    if (p.mode == Pointer::stretching)
+        ctl.setNoteLength (p.row, p.step, columnAt (e.getPosition().x) - p.step + 1);
     if (p.mode == Pointer::painting)
     {
         int row, step;
@@ -786,7 +800,7 @@ StepSheet::StepSheet (Controller& c, int r, int s, std::function<void()> close)
         if (auto* clip = ctl.editClip())
         {
             if (clip->data.drum) clip->data.lanes[(size_t) row][(size_t) step] = {};
-            else clip->data.notes[(size_t) step] = {};
+            else { clip->data.notes[(size_t) step] = {}; clip->data.noteLen[(size_t) step].fill (0); }
             ctl.stepChanged();
         }
         onClose();

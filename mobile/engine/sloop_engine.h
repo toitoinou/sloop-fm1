@@ -71,6 +71,11 @@ void se_drum_step(int step, uint16_t lanes_on, const uint8_t level[SE_LANES], co
                   int nudge, int fill);
 /* a synth step: n notes (0 = a rest), MIDI velocity, ratchet 1..4 */
 void se_synth_step(int track, int step, const uint8_t *notes, int n, int velocity, int ratchet, int nudge, int fill);
+/* the same, where bit k of `cont` says note k goes on from the step before (held, not played again): long notes,
+ * one note at a time (SLOOP 2.7's SF_CONT; the notes not listed end here) */
+void se_synth_step_cont(int track, int step, const uint8_t *notes, int n, unsigned cont, int velocity, int ratchet,
+                        int nudge, int fill);
+int se_step_flags(int track, int step);       /* a synth step's flags as the engine has them (tests) */
 typedef struct { uint8_t step, param; int16_t value; } se_lock_t;
 void se_set_locks(int track, const se_lock_t *locks, int count);   /* replaces every lock of the track */
 
