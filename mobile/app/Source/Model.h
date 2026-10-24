@@ -14,8 +14,10 @@ namespace sloop
 constexpr int kTracks = 4;
 constexpr int kSteps = 16;          // a clip's steps (SLOOP's engine takes up to 64: longer clips come later)
 constexpr int kLanes = 16;
-constexpr int kRows = 15;           // the piano roll's rows: two octaves of the track's scale
+constexpr int kRows = 16;           // the piano roll's rows (and the pads): two octaves and more of the scale
 constexpr int kKnobs = 4;
+constexpr int kMaxLocks = 24;       // a track's parameter locks (SLOOP's NLOCK)
+constexpr int kParamSlots = 80;     // room for every SLOOP track parameter (se_param_count(): 71)
 constexpr int kChainMax = 8;
 constexpr int16_t kNoLock = INT16_MIN;
 
@@ -36,15 +38,38 @@ struct StepData
     uint16_t rows = 0;              // synth steps: the piano roll rows played (bit r = row r)
 };
 
+struct LockData { uint8_t step = 0, param = 0; int16_t value = 0; };   // on `step`, SLOOP parameter `param` = value
+
 struct ClipData
 {
     uint8_t drum = 1;
     uint8_t length = kSteps;
     std::array<std::array<StepData, kSteps>, kLanes> lanes {};   // the drum track: [lane][step]
     std::array<StepData, kSteps> notes {};                       // a synth track
-    std::array<std::array<int16_t, kKnobs>, kSteps> locks;       // the knobs' parameter locks, per step
+    std::array<LockData, kMaxLocks> locks {};                    // parameter locks, any sound parameter
+    uint8_t nLocks = 0;
 
-    ClipData() { for (auto& l : locks) l.fill (kNoLock); }
+    int16_t lock (int step, int param) const
+    {
+        for (int i = 0; i < nLocks; ++i)
+            if (locks[(size_t) i].step == step && locks[(size_t) i].param == param) return locks[(size_t) i].value;
+        return kNoLock;
+    }
+    bool setLock (int step, int param, int value)               // false: the track's locks are all used
+    {
+        for (int i = 0; i < nLocks; ++i)
+            if (locks[(size_t) i].step == step && locks[(size_t) i].param == param) { locks[(size_t) i].value = (int16_t) value; return true; }
+        if (nLocks == kMaxLocks) return false;
+        locks[nLocks++] = { (uint8_t) step, (uint8_t) param, (int16_t) value };
+        return true;
+    }
+    void clearLock (int step, int param)                         // param < 0: every lock of the step
+    {
+        int n = 0;
+        for (int i = 0; i < nLocks; ++i)
+            if (! (locks[(size_t) i].step == step && (param < 0 || locks[(size_t) i].param == param))) locks[(size_t) n++] = locks[(size_t) i];
+        nLocks = (uint8_t) n;
+    }
 
     bool stepOn (int row, int step) const
     {
@@ -52,7 +77,7 @@ struct ClipData
     }
     bool hasLocks (int step) const
     {
-        for (auto v : locks[(size_t) step]) if (v != kNoLock) return true;
+        for (int i = 0; i < nLocks; ++i) if (locks[(size_t) i].step == step) return true;
         return false;
     }
     bool columnActive (int step) const
@@ -69,11 +94,10 @@ struct Clip
     ClipData data;
 };
 
-// The knobs: the same four SLOOP track parameters on every track (core.h P_*)
-// (ranges and defaults: params.c TP[]; the engine checks them in sloop_engine.c's static asserts)
-struct KnobDef { const char* label; int param, min, max, def; };
-constexpr std::array<KnobDef, kKnobs> kKnobDefs {{ { "Level", 0, 0, 127, 104 }, { "Filtre", 50, -64, 63, 0 },
-                                                   { "Reverb", 36, 0, 127, 0 }, { "Pan", 39, -64, 63, 0 } }};
+// The knobs show four SLOOP parameters at a time (core.h P_*), page by page: the mix, the engine's four main
+// ones (its macros, as the FM-1's HOME knobs), its two EDIT pages, the envelope, the effect sends
+enum class Page { mix, macro, edit1, edit2, env, fx };
+struct KnobDef { juce::String label; int param = -1, min = 0, max = 127, def = 0; bool valid = false; };
 constexpr int kParamMute = 40;      // core.h P_MUTE
 
 // The sounds at start: a kit for DR, an engine and a preset for T1..T3 (sloop_engine.h se_*_name)

@@ -615,6 +615,7 @@ void PadsView::mouseDown (const juce::MouseEvent& e)
     if (isDrum (ctl.sel)) { ctl.lane = snd; ctl.audio.drumHit (snd, (int) (vel * 127)); }
     else ctl.audio.note (ctl.sel, rowNote (ctl.sel, snd), true);
     down[e.source.getIndex()] = { pad, vel };
+    ctl.recordHit (snd, (int) (vel * 127));              // (REC on and playing: into the clip that plays)
     ctl.notify();
 }
 void PadsView::mouseUp (const juce::MouseEvent& e)
@@ -627,9 +628,19 @@ void PadsView::mouseUp (const juce::MouseEvent& e)
 }
 
 // =================================================================== knobs
+juce::Rectangle<int> KnobStrip::pagesRect() const
+{
+    return getLocalBounds().reduced (10, 8).withTrimmedTop (26).removeFromTop (26);
+}
+juce::Rectangle<int> KnobStrip::pageRect (int i) const
+{
+    auto r = pagesRect();
+    const int n = (int) ctl.pages().size(), w = r.getWidth() / juce::jmax (1, n);
+    return { r.getX() + i * w, r.getY(), w - 3, r.getHeight() };
+}
 juce::Rectangle<int> KnobStrip::knobRect (int k) const
 {
-    auto a = getLocalBounds().reduced (10).withTrimmedTop (getWidth() < 360 ? 30 : 44);
+    auto a = getLocalBounds().reduced (10).withTrimmedTop (60);
     if (getWidth() < 360 && getHeight() > 200)        // the narrow right column: 2 x 2
     {
         const int w = a.getWidth() / 2, h = juce::jmin (a.getHeight() / 2, w + 20);
@@ -643,21 +654,12 @@ int KnobStrip::knobAt (juce::Point<int> p) const
     for (int k = 0; k < kKnobs; ++k) if (knobRect (k).contains (p)) return k;
     return -1;
 }
-juce::String KnobStrip::format (int k, int v)
-{
-    switch (k)
-    {
-        case 1: return v == 0 ? juce::String ("off") : (v < 0 ? "LP " : "HP ") + juce::String (std::abs (v));
-        case 3: return v == 0 ? juce::String ("C") : (v < 0 ? "L" : "R") + juce::String (std::abs (v));
-        default: return juce::String (v);
-    }
-}
 void KnobStrip::paint (juce::Graphics& g)
 {
     g.setColour (theme::panel);
     g.fillRoundedRectangle (getLocalBounds().toFloat(), theme::radius);
     const auto col = theme::track (ctl.sel);
-    auto title = getLocalBounds().reduced (12, 8).removeFromTop (22);
+    auto title = titleRect();
     g.setColour (col);
     g.fillRect (title.getX(), title.getCentreY() - 7, 3, 14);
     g.setColour (theme::fg);
@@ -668,12 +670,27 @@ void KnobStrip::paint (juce::Graphics& g)
     if (! ctl.held.empty()) name << juce::String::fromUTF8 (" · pas ") << (ctl.held.front().second + 1);
     else name << juce::String::fromUTF8 ("  ▾");
     g.drawText (name, title.withTrimmedLeft (10), juce::Justification::centredLeft, true);
+
+    const auto pages = ctl.pages();
+    for (int i = 0; i < (int) pages.size(); ++i)
+    {
+        auto r = pageRect (i).toFloat();
+        const bool on = pages[(size_t) i] == ctl.page[(size_t) ctl.sel];
+        g.setColour (on ? theme::cellBeat : theme::panel);
+        g.fillRoundedRectangle (r, theme::radius);
+        if (on) { g.setColour (col); g.fillRect (r.removeFromBottom (2.0f)); }
+        g.setColour (on ? theme::fg : theme::dim);
+        g.setFont (font (11.5f, on));
+        g.drawText (ctl.pageName (pages[(size_t) i]), pageRect (i), juce::Justification::centred, true);
+    }
+
+    const auto defs = ctl.knobDefs();
     for (int k = 0; k < kKnobs; ++k)
     {
         auto r = knobRect (k);
-        const auto& d = kKnobDefs[(size_t) k];
+        const auto& d = defs[(size_t) k];
         const int v = ctl.knob (k);
-        const float frac = (float) (v - d.min) / (float) (d.max - d.min);
+        const float frac = d.valid ? (float) (v - d.min) / (float) (d.max - d.min) : 0.0f;
         const float size = juce::jmin ((float) r.getWidth() - 8.0f, (float) r.getHeight() - 22.0f, 64.0f);
         auto circle = juce::Rectangle<float> (size, size).withCentre ({ (float) r.getCentreX(), (float) r.getY() + size / 2 + 2 });
         const float a0 = juce::MathConstants<float>::pi * 1.25f, a1 = juce::MathConstants<float>::pi * 2.75f;
@@ -682,13 +699,14 @@ void KnobStrip::paint (juce::Graphics& g)
         value.addCentredArc (circle.getCentreX(), circle.getCentreY(), size / 2 - 3, size / 2 - 3, 0, a0,
                              a0 + (a1 - a0) * juce::jmax (0.001f, frac), true);
         const bool locked = ctl.knobLocked (k);
-        g.setColour (juce::Colour (0xff4a4a4a));
+        g.setColour (juce::Colour (0xff4a4a4a).withAlpha (d.valid ? 1.0f : 0.35f));
         g.strokePath (track, juce::PathStrokeType (3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        if (! d.valid) continue;
         g.setColour (locked ? theme::fg : col);
         g.strokePath (value, juce::PathStrokeType (3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (theme::fg);
-        g.setFont (font (12.0f));
-        g.drawText (format (k, v), circle, juce::Justification::centred);
+        g.setFont (font (size < 50 ? 10.5f : 12.0f));
+        g.drawText (ctl.format (d, v), circle.reduced (4.0f), juce::Justification::centred, true);
         g.setColour (theme::dim);
         g.drawText (d.label, juce::Rectangle<float> ((float) r.getX(), circle.getBottom() + 2, (float) r.getWidth(), 16.0f),
                     juce::Justification::centredTop);
@@ -706,9 +724,13 @@ void KnobStrip::paint (juce::Graphics& g)
 void KnobStrip::mouseDown (const juce::MouseEvent& e)
 {
     if (titleRect().contains (e.getPosition()) && ctl.held.empty()) { if (onSound) onSound(); return; }
+    const auto pages = ctl.pages();
+    for (int i = 0; i < (int) pages.size(); ++i)
+        if (pageRect (i).contains (e.getPosition())) { ctl.setPage (pages[(size_t) i]); return; }
     Drag d;
     d.k = knobAt (e.getPosition());
     d.y = (float) e.getPosition().y;
+    if (d.k >= 0 && ! ctl.knobDefs()[(size_t) d.k].valid) d.k = -1;
     if (d.k >= 0) d.value = (float) ctl.knob (d.k);
     drags[e.source.getIndex()] = d;
 }
@@ -717,15 +739,17 @@ void KnobStrip::mouseDrag (const juce::MouseEvent& e)
     auto it = drags.find (e.source.getIndex());
     if (it == drags.end() || it->second.k < 0) return;
     auto& d = it->second;
-    const auto& def = kKnobDefs[(size_t) d.k];
+    const auto def = ctl.knobDefs()[(size_t) d.k];
     const float dy = d.y - (float) e.getPosition().y;
     d.y = (float) e.getPosition().y;
     d.moved += std::abs (dy);
     if (d.moved < 3) return;
     const bool fine = drags.size() > 1;                  // a second finger on the strip: fine adjustment
-    d.value += dy * (float) (def.max - def.min) / (fine ? 1000.0f : 180.0f);
-    ctl.setKnob (d.k, juce::roundToInt (d.value));
+    // a short range (a wave, a mode: a few values) moves slower: one value per 18 points or so
+    const float span = (float) (def.max - def.min), travel = juce::jmax (fine ? 1000.0f : 180.0f, span * 18.0f);
+    d.value += dy * span / travel;
     d.value = juce::jlimit ((float) def.min, (float) def.max, d.value);
+    ctl.setKnob (d.k, juce::roundToInt (d.value));
 }
 void KnobStrip::mouseUp (const juce::MouseEvent& e)
 {
@@ -756,7 +780,7 @@ StepSheet::StepSheet (Controller& c, int r, int s, std::function<void()> close)
     make (ratchet, { "x1", "x2", "x3", "x4" }, [this] (int i) { if (auto* x = ctl.step (row, step)) x->ratchet = (uint8_t) (i + 1); });
     early.onClick = [this] { if (auto* x = ctl.step (row, step)) x->nudge = (int8_t) juce::jmax (-3, x->nudge - 1); sync(); ctl.stepChanged(); };
     late.onClick = [this] { if (auto* x = ctl.step (row, step)) x->nudge = (int8_t) juce::jmin (3, x->nudge + 1); sync(); ctl.stepChanged(); };
-    clearLocks.onClick = [this] { if (auto* clip = ctl.editClip()) clip->data.locks[(size_t) step].fill (kNoLock); ctl.stepChanged(); };
+    clearLocks.onClick = [this] { if (auto* clip = ctl.editClip()) clip->data.clearLock (step, -1); ctl.stepChanged(); };
     del.onClick = [this]
     {
         if (auto* clip = ctl.editClip())

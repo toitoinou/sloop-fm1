@@ -32,8 +32,9 @@ public:
     std::atomic<int> position[kTracks];      // its step, -1 stopped
     std::atomic<bool> running { false };
     std::atomic<int> hits[kTracks];          // counts up when a track plays a step (the rail's LEDs)
-    std::atomic<int> knobValue[kTracks][kKnobs];   // the knobs' parameters as the engine has them (a sound sets
-    std::atomic<int> knobSerial { 0 };             // its sends): counts up when they change
+    std::atomic<int> paramValue[kTracks][kParamSlots];   // every SLOOP parameter as the engine has it (a new sound
+    std::atomic<int> paramSerial { 0 };                  // sets them all): counts up when they change
+    std::atomic<float> stepPhase[kTracks];               // how far into its step each track is, 0..1 (recording)
 
     // ---- juce::AudioIODeviceCallback
     void audioDeviceIOCallbackWithContext (const float* const*, int, float* const* out, int numOut, int numSamples,
@@ -70,7 +71,7 @@ private:
         int reportSlot = -1;
     };
     void renderEngineBlock();
-    void publishKnobs (int track);
+    void publishParams (int track);
     void startTransport();
     void prepareNextLoop (int t);
     void writeSteps (int t, int onlyStep, int skipStep);
@@ -80,6 +81,8 @@ private:
     std::vector<Command> queue;
     std::array<TrackState, kTracks> tracks;
     bool fill = false;
+    int tempo = 118;
+    std::array<int, kTracks> framesInStep {};
     uint32_t rng = 0x12345678u;
 
     // engine (44.1 kHz) -> device rate

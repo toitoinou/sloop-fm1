@@ -7,6 +7,8 @@
 
 _Static_assert(SE_P_LEVEL == P_LEVEL && SE_P_DEC == P_DEC && SE_P_REV == P_REV && SE_P_PAN == P_PAN &&
                SE_P_MUTE == P_MUTE && SE_P_TFLT == P_TFLT, "sloop_engine.h's parameter ids follow core.h");
+_Static_assert(SE_P_ATK == P_ATK && SE_P_SUS == P_SUS && SE_P_REL == P_REL && SE_P_DIST == P_DIST &&
+               SE_P_CHOR == P_CHOR && SE_P_DLY == P_DLY && SE_P_E0 == P_E0, "sloop_engine.h's parameter ids follow core.h");
 _Static_assert(SE_DRUM == TRK_DRUM && SE_TRACKS == NTRK && SE_LANES == DRUM_LANES && SE_MAX_STEPS == NSTEP &&
                SE_MAX_LOCKS == NLOCK, "sloop_engine.h's sizes follow core.h");
 
@@ -105,6 +107,43 @@ void se_param_info(int track, int id, int *min, int *max, int *def, const char *
 }
 int se_param(int track, int id) { return track >= 0 && track < NTRK && id >= 0 && id < P_COUNT ? trk[track].p[id] : 0; }
 void se_set_param(int track, int id, int value) { preview_param((uint32_t)track, (uint32_t)id, value); }
+
+int se_param_count(void) { return P_COUNT; }
+static const param_desc_t *se_desc(int engine, int id)
+{
+    if (id < 0 || id >= P_COUNT) return 0;
+    if (id < P_E0) return &TP[id];
+    if (engine < 0 || engine >= NENGINES) return 0;
+    return &ENGINES[engine]->edit[id - P_E0];
+}
+int se_describe(int engine, int id, int *min, int *max, int *def, const char **label)
+{
+    const param_desc_t *d = se_desc(engine, id);
+    if (!d || !d->label) return 0;
+    if (min) *min = d->min;
+    if (max) *max = d->max;
+    if (def) *def = d->def;
+    if (label) *label = d->label;
+    return 1;
+}
+const char *se_value_name(int engine, int id, int value)
+{
+    const param_desc_t *d = se_desc(engine, id);
+    if (!d || d->fmt != F_ENUM || !d->names || value < d->min || value > d->max) return 0;
+    return d->names[value - d->min];
+}
+const char *se_engine_page(int engine, int page)
+{
+    return engine >= 0 && engine < NENGINES && page >= 0 && page < 2 ? ENGINES[engine]->page_title[page] : "";
+}
+int se_engine_macro(int engine, int k)
+{
+    return engine >= 0 && engine < NENGINES && k >= 0 && k < 4 ? ENGINES[engine]->macro[k] : -1;
+}
+void se_params(int track, int16_t *out)
+{
+    if (track >= 0 && track < NTRK) memcpy(out, trk[track].p, sizeof trk[track].p);
+}
 
 void se_set_length(int track, int steps) { preview_param((uint32_t)track, P_SLEN, steps); }
 void se_clear(int track)

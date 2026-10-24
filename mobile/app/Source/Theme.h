@@ -43,11 +43,16 @@ struct LookAndFeel : juce::LookAndFeel_V4
                                     : b.findColour (juce::TextButton::buttonColourId);
         if (down) c = c.brighter (0.15f);
         else if (over) c = c.brighter (0.05f);
+        if (c.isTransparent()) return;                  // a plain text button (the audio info)
         g.setColour (c);
         g.fillRoundedRectangle (r, radius);
         g.setColour (line);
         g.drawRoundedRectangle (r, radius, 1.0f);
     }
-    juce::Font getTextButtonFont (juce::TextButton&, int h) override { return font (juce::jmin (15.0f, (float) h * 0.42f), true); }
+    juce::Font getTextButtonFont (juce::TextButton& b, int h) override
+    {
+        if (b.findColour (juce::TextButton::buttonColourId).isTransparent()) return font (12.0f);
+        return font (juce::jmin (15.0f, (float) h * 0.42f), true);
+    }
 };
 } // namespace sloop::theme

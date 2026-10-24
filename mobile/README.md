@@ -49,8 +49,16 @@ L'appli a deux modes en ligne de commande, utilisés par la CI :
 
 - `--selftest` : fait tourner le moteur sans carte son et vérifie le séquencement (lancement à la mesure,
   chaînes, arrêt, son non nul) ;
-- `--snapshot sortie.png 844x390 [session|grid|pads]` : dessine l'écran dans une image, pour regarder la
-  disposition sans appareil.
+- `--snapshot sortie.png 844x390 [session|grid|pads|soundN|trackN]` : dessine l'écran dans une image, pour
+  regarder la disposition sans appareil.
+
+## Le son et la latence
+
+L'appli prend la sortie **Oboe** de JUCE (AAudio, ou OpenSL ES sur les vieux téléphones), le chemin à faible
+latence d'Android, avec un petit tampon. La ligne grise à droite des onglets montre la sortie, la taille du tampon
+et la latence estimée (`Oboe · 192 · ≈ 8,0 ms`) : **touche-la pour essayer la taille suivante**, et garde la plus
+petite qui ne craque pas sur ton téléphone. L'APK de la CI est une version Release (optimisée) : une version Debug
+calcule bien plus lentement et oblige à de plus gros tampons.
 
 ## Android
 
@@ -59,22 +67,25 @@ JUCE ne sait pas faire d'Android avec CMake : on passe par Projucer, qui génèr
 ```
 mobile/tools/gen_engine_tables.sh
 Projucer --resave mobile/app/SloopTouch.jucer       # -> mobile/app/Builds/Android
-cd mobile/app/Builds/Android && ./gradlew assembleDebug
+cd mobile/app/Builds/Android && ./gradlew assembleRelease     # (signée avec la clé de debug d'Android)
 ```
 
 Il faut le SDK Android avec le NDK `26.2.11394342` et CMake `3.22.1` (les versions que JUCE 8.0.4 écrit dans le
 projet). On peut aussi ouvrir `mobile/app/Builds/Android` dans Android Studio.
 
-**La CI fait tout ça** : à chaque push qui touche `mobile/`, le workflow *Mobile app* construit l'APK de debug
+**La CI fait tout ça** : à chaque push qui touche `mobile/`, le workflow *Mobile app* construit l'APK (Release)
 et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (section *Artifacts* du run).
 
 ## Feuille de route
 
-- [ ] Tester la latence et la charge CPU sur de vrais téléphones (Oboe est activé).
+- [ ] Mesurer la latence et la charge CPU sur de vrais téléphones (Oboe, tampon réglable à l'écran).
 - [x] Choisir le son de chaque piste : touche le nom du son en haut des potards (les 12 moteurs et leurs presets, les kits).
+- [x] Tous les paramètres du son, page par page : Mix, Macro (les quatre principaux du moteur), ses deux pages
+  d'édition (OSC, FLT…), l'enveloppe, les envois d'effets. Un pas maintenu verrouille n'importe lequel (p-lock).
+- [x] Enregistrer en jouant sur les pads (Rec pendant la lecture, au pas le plus proche).
 - [ ] Longueur des clips par piste (8 à 64 pas) pour des boucles décalées.
 - [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
-- [ ] Enregistrer en jouant sur les pads, note repeat, sauvegarde des projets.
+- [ ] Note repeat, métronome, quantification réglable, sauvegarde des projets.
 - [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
 - [ ] Une piste guitare (NAM / TONE3000).
 

@@ -48,6 +48,16 @@ const char *se_kit_name(int kit);
 void se_set_kit(int kit);
 const char *se_lane_name(int lane);
 
+/* what the parameters are (constant tables: any thread). id: core.h P_* (track parameters below SE_P_E0, the
+ * engine's own EDIT parameters from SE_P_E0 to SE_P_E0 + 7). Returns 0 for an unknown one */
+enum { SE_P_ATK = 1, SE_P_SUS = 3, SE_P_REL = 4, SE_P_DIST = 33, SE_P_CHOR = 34, SE_P_DLY = 35, SE_P_E0 = 63 };
+int se_param_count(void);
+int se_describe(int engine, int id, int *min, int *max, int *def, const char **label);
+const char *se_value_name(int engine, int id, int value);   /* a named value (a wave, a mode), else 0 */
+const char *se_engine_page(int engine, int page);           /* the titles of its two EDIT pages ("OSC", "FLT") */
+int se_engine_macro(int engine, int k);                     /* its four main parameters (the FM-1's HOME knobs) */
+void se_params(int track, int16_t *out);                    /* every parameter of a track (audio thread) */
+
 /* parameters (core.h P_*): range, default, label; set */
 void se_param_info(int track, int id, int *min, int *max, int *def, const char **label);
 int se_param(int track, int id);

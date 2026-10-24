@@ -6,11 +6,17 @@ namespace sloop
 MainComponent::MainComponent()
 {
     setLookAndFeel (&look);
-    for (auto* c : std::initializer_list<juce::Component*> { &playButton, &tapButton, &stopClips, &fillButton, &bpm, &rail,
-                                                             &tabSession, &tabGrid, &tabPads, &session, &grid, &pads, &knobs })
+    for (auto* c : std::initializer_list<juce::Component*> { &playButton, &recButton, &tapButton, &stopClips, &fillButton, &bpm,
+                                                             &rail, &tabSession, &tabGrid, &tabPads, &audioInfo, &session,
+                                                             &grid, &pads, &knobs })
         addAndMakeVisible (c);
     playButton.onClick = [this] { ctl.togglePlay(); };
     tapButton.onClick = [this] { tap(); };
+    recButton.onClick = [this] { ctl.toggleRecord(); };
+    recButton.setColour (juce::TextButton::buttonOnColourId, theme::rec);
+    audioInfo.onClick = [this] { nextBufferSize(); };
+    audioInfo.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+    audioInfo.setColour (juce::TextButton::textColourOffId, theme::dim);
     stopClips.onClick = [this] { ctl.stopAll(); };
     fillButton.onHold = [this] (bool on) { audio.setFill (on); };
     tabSession.onClick = [this] { showTab (Tab::session); };
@@ -20,8 +26,7 @@ MainComponent::MainComponent()
     ctl.changed = [this] { refresh(); };
     showTab (Tab::session);
 
-    // the engine renders whatever the device asks; no input (no microphone permission on Android)
-    devices.initialiseWithDefaultDevices (0, 2);
+    setupAudio();
     devices.addAudioCallback (&audio);
     setSize (1280, 800);
     startTimerHz (30);
@@ -51,16 +56,18 @@ void MainComponent::resized()
         const int bh = big ? 46 : 40;
         auto top = left.removeFromTop (bh);
         playButton.setBounds (top.removeFromLeft (top.getWidth() / 2 - 3)); top.removeFromLeft (6);
-        tapButton.setBounds (top);
+        recButton.setBounds (top);
         left.removeFromTop (6);
-        bpm.setBounds (left.removeFromTop (bh));
+        auto second = left.removeFromTop (bh);
+        bpm.setBounds (second.removeFromLeft (second.getWidth() / 2 - 3)); second.removeFromLeft (6);
+        tapButton.setBounds (second);
         left.removeFromTop (g);
         rail.setBounds (left);
         auto perf = right.removeFromTop (bh * 2 + 6);
         fillButton.setBounds (perf.removeFromLeft (perf.getWidth() / 2 - 3)); perf.removeFromLeft (6);
         stopClips.setBounds (perf);
         right.removeFromTop (g);
-        knobs.setBounds (right.removeFromTop (juce::jmin (right.getHeight(), big ? 300 : right.getHeight())));
+        knobs.setBounds (right.removeFromTop (juce::jmin (right.getHeight(), big ? 360 : right.getHeight())));
         stage = r;
     }
     else
@@ -68,6 +75,7 @@ void MainComponent::resized()
         // portrait: transport, performance, tracks, tabs, stage, knobs
         auto top = r.removeFromTop (44);
         playButton.setBounds (top.removeFromLeft (52)); top.removeFromLeft (6);
+        recButton.setBounds (top.removeFromLeft (52)); top.removeFromLeft (6);
         tapButton.setBounds (top.removeFromRight (64)); top.removeFromRight (6);
         bpm.setBounds (top);
         r.removeFromTop (g);
@@ -77,12 +85,16 @@ void MainComponent::resized()
         r.removeFromTop (g);
         rail.setBounds (r.removeFromTop (50));
         r.removeFromTop (g);
-        knobs.setBounds (r.removeFromBottom (130));
+        knobs.setBounds (r.removeFromBottom (160));
         r.removeFromBottom (g);
         stage = r;
     }
     auto tabs = stage.removeFromTop (38);
-    for (auto* b : { &tabSession, &tabGrid, &tabPads }) { b->setBounds (tabs.removeFromLeft (100)); tabs.removeFromLeft (6); }
+    for (auto* b : { &tabSession, &tabGrid, &tabPads })
+    {
+        b->setBounds (tabs.removeFromLeft (juce::jmin (100, (stage.getWidth() - 12) / 4))); tabs.removeFromLeft (6);
+    }
+    audioInfo.setBounds (tabs);
     stage.removeFromTop (g);
     for (auto* c : std::initializer_list<juce::Component*> { &session, &grid, &pads }) c->setBounds (stage);
     if (sheet) sheet->setBounds (getLocalBounds());
@@ -105,6 +117,7 @@ void MainComponent::refresh()
 {
     playButton.setButtonText (ctl.playing ? "Stop" : "Play");
     playButton.setToggleState (ctl.playing, juce::dontSendNotification);
+    recButton.setToggleState (ctl.recording, juce::dontSendNotification);
     tabGrid.setButtonText (isDrum (ctl.sel) ? "Grille" : "Notes");
     session.refresh();
     grid.resized();
@@ -133,6 +146,57 @@ void MainComponent::openSound()
     {
         juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
     }));
+}
+
+// the low-latency path: Oboe (AAudio, or OpenSL ES on old phones) and a small buffer; the buffer is shown on screen
+// and a tap on it tries the next size, to find the smallest one that does not crackle on this phone
+void MainComponent::setupAudio()
+{
+    devices.initialiseWithDefaultDevices (0, 2);     // no input: no microphone permission on Android
+    for (auto* type : devices.getAvailableDeviceTypes())
+        if (type->getTypeName() == "Oboe")
+        {
+            devices.setCurrentAudioDeviceType ("Oboe", true);
+            break;
+        }
+    if (auto* dev = devices.getCurrentAudioDevice())
+    {
+        auto setup = devices.getAudioDeviceSetup();
+        int best = dev->getDefaultBufferSize();
+        for (int size : dev->getAvailableBufferSizes())
+            if (size >= 128) { best = juce::jmin (best, size); break; }
+        setup.bufferSize = best;
+        devices.setAudioDeviceSetup (setup, true);
+    }
+    showAudioInfo();
+}
+
+void MainComponent::nextBufferSize()
+{
+    auto* dev = devices.getCurrentAudioDevice();
+    if (dev == nullptr) return;
+    auto sizes = dev->getAvailableBufferSizes();
+    if (sizes.isEmpty()) return;
+    const int now = dev->getCurrentBufferSizeSamples();
+    int next = sizes[0];
+    for (int size : sizes)
+        if (size > now && size <= 2048) { next = size; break; }
+    auto setup = devices.getAudioDeviceSetup();
+    setup.bufferSize = next;
+    devices.setAudioDeviceSetup (setup, true);
+    showAudioInfo();
+}
+
+void MainComponent::showAudioInfo()
+{
+    auto* dev = devices.getCurrentAudioDevice();
+    if (dev == nullptr) { audioInfo.setButtonText ("pas d'audio"); return; }
+    const double rate = dev->getCurrentSampleRate();
+    const int buffer = dev->getCurrentBufferSizeSamples(), extra = dev->getOutputLatencyInSamples();
+    const double ms = rate > 0 ? (buffer + extra) * 1000.0 / rate : 0.0;
+    audioInfo.setButtonText (devices.getCurrentAudioDeviceType() + juce::String::fromUTF8 (" · ") + juce::String (buffer)
+                             + juce::String::fromUTF8 (" · ≈ ") + juce::String (ms, 1) + " ms");
+    audioInfo.setTooltip (juce::String (rate / 1000.0, 1) + " kHz");
 }
 
 void MainComponent::tap()

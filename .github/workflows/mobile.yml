@@ -64,8 +64,15 @@ jobs:
       - name: Android SDK packages
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.2.11394342" "cmake;3.22.1"
 
-      # the generated project signs with ~/.android/debug.keystore (JUCE's default): make one if the runner has none
-      - name: Debug keystore
+      # the generated project signs with ~/.android/debug.keystore (JUCE's default). The same key from run to run
+      # (cached), so a new APK installs over the last one without uninstalling it
+      - name: Signing key (cached)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sloop-touch-debug-keystore
+
+      - name: Signing key
         run: |
           mkdir -p ~/.android
           [ -f ~/.android/debug.keystore ] || keytool -genkeypair -keystore ~/.android/debug.keystore \
@@ -76,11 +83,11 @@ jobs:
         working-directory: mobile/app/Builds/Android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon assembleRelease
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sloop-touch-debug-apk
+          name: sloop-touch-apk
           path: mobile/app/Builds/Android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
 

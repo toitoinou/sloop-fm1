@@ -53,13 +53,37 @@ int runSelfTest()
     const int second = audio.playingSlot[1].load();
     check (first != second && (first == 0 || first == 1) && (second == 0 || second == 1), "a chain takes turns");
 
-    const int serial = audio.knobSerial.load();
+    const int serial = audio.paramSerial.load();
     ctl.setSound (1, 9, 2);                               // T1: FM6 · ROUND BASS
     ctl.setSound (0, -1, 6);                              // DR: the 909 kit
     run (0.2);
     ctl.poll();
-    check (audio.knobSerial.load() > serial && ctl.seenKnobSerial == audio.knobSerial.load(),
-           "a new sound reports its knobs back");
+    check (audio.paramSerial.load() > serial && ctl.seenParamSerial == audio.paramSerial.load(),
+           "a new sound reports its parameters back");
+
+    ctl.select (1);                                       // T1's own parameters, page by page
+    ctl.setPage (Page::edit1);
+    const auto defs = ctl.knobDefs();
+    check (defs[0].valid && defs[0].param == SE_P_E0, "the engine's EDIT parameters are on the knobs");
+    ctl.setKnob (0, defs[0].min + 3);
+    check (ctl.params[1][(size_t) SE_P_E0] == defs[0].min + 3, "a knob sets its parameter");
+    ctl.held = { { 0, 4 } };                              // step 5 held: a lock on an engine parameter
+    ctl.setKnob (0, defs[0].min + 5);
+    check (ctl.editClip()->data.lock (4, SE_P_E0) == defs[0].min + 5, "a held step locks any parameter");
+    ctl.held.clear();
+    ctl.select (0);
+
+    ctl.toggleRecord();                                   // REC: a pad played goes into the playing clip
+    auto& rec = ctl.session.at (0, audio.playingSlot[0].load())->data;
+    int before = 0;
+    for (auto& x : rec.lanes[9]) before += x.on;
+    ctl.recordHit (9, 100);                               // lane 9 (low tom): empty in the demo
+    run (0.3);
+    ctl.poll();
+    int after = 0;
+    for (auto& x : rec.lanes[9]) after += x.on;
+    check (after == before + 1, "a pad played while recording writes a step");
+    ctl.toggleRecord();
 
     ctl.stopTrack (2);
     run (bar * 1.1);

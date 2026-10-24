@@ -3,6 +3,7 @@
 // parameter lock. It turns the screens' gestures into the audio engine's commands.
 #pragma once
 #include "AudioEngine.h"
+#include "sloop_engine.h"
 #include <functional>
 
 namespace sloop
@@ -12,11 +13,9 @@ class Controller
 public:
     explicit Controller (AudioEngine& a) : audio (a), session (demoSession())
     {
+        readParams();
         for (int t = 0; t < kTracks; ++t)
-        {
-            for (int k = 0; k < kKnobs; ++k) base[(size_t) t][(size_t) k] = audio.knobValue[t][k].load();
             if (session.at (t, 0)) { playlist[(size_t) t] = { 0 }; sendPlaylist (t, AudioEngine::When::now); }
-        }
     }
 
     AudioEngine& audio;
@@ -27,11 +26,15 @@ public:
     std::array<int, kTracks> queued { { kNone, kNone, kNone, kNone } };   // a row waiting for the bar, kStop, kNone
     std::array<std::vector<int>, kTracks> playlist;      // the rows each track plays in turn (a chain)
     std::array<bool, kTracks> muted {};
-    std::array<std::array<int, kKnobs>, kTracks> base;
+    std::array<std::array<int, kParamSlots>, kTracks> params {};   // the tracks' SLOOP parameters (the knobs' values)
+    std::array<Page, kTracks> page { { Page::mix, Page::macro, Page::macro, Page::macro } };
     std::vector<std::pair<int, int>> held;               // the steps held (row, step): knobs lock them
     std::array<Sound, kTracks> sounds = kDefaultSounds;   // DR: { -, kit }
-    int seenKnobSerial = 0;
+    int seenParamSerial = -1;
     bool playing = false;
+    bool recording = false;
+    struct Pending { int track, slot, step; };
+    std::vector<Pending> pendingRecord;                  // recorded on a step not played yet: sent once it has passed
     int bpm = 118;
     std::function<void()> changed;                       // every screen repaints
 
@@ -103,13 +106,14 @@ public:
     void poll()
     {
         bool any = false;
-        if (const int s = audio.knobSerial.load(); s != seenKnobSerial)     // a sound brought its own sends
-        {
-            seenKnobSerial = s;
-            for (int t = 0; t < kTracks; ++t)
-                for (int k = 0; k < kKnobs; ++k) base[(size_t) t][(size_t) k] = audio.knobValue[t][k].load();
-            any = true;
-        }
+        if (audio.paramSerial.load() != seenParamSerial) { readParams(); any = true; }   // a sound brought its own values
+        for (auto it = pendingRecord.begin(); it != pendingRecord.end();)
+            if (audio.position[it->track].load() != it->step || ! playing)
+            {
+                clipEdited (it->track, it->slot);
+                it = pendingRecord.erase (it);
+            }
+            else ++it;
         for (int t = 0; t < kTracks; ++t)
         {
             auto q = queued[(size_t) t];
@@ -197,55 +201,160 @@ public:
     }
     void stepChanged() { clipEdited (sel, editSlot[(size_t) sel]); }
 
-    // ---- knobs: the track's value, or the held steps' locks
+    // ---- knobs: four SLOOP parameters of the selected track (its page), or the held steps' locks
+    std::vector<Page> pages() const
+    {
+        if (isDrum (sel)) return { Page::mix, Page::fx };
+        return { Page::mix, Page::macro, Page::edit1, Page::edit2, Page::env, Page::fx };
+    }
+    juce::String pageName (Page p) const
+    {
+        const int e = sounds[(size_t) sel].engine;
+        switch (p)
+        {
+            case Page::mix: return "Mix";
+            case Page::macro: return "Mac";
+            case Page::edit1: return se_engine_page (e, 0);
+            case Page::edit2: return se_engine_page (e, 1);
+            case Page::env: return "Env";
+            case Page::fx: return "FX";
+        }
+        return {};
+    }
+    std::array<KnobDef, kKnobs> knobDefs() const
+    {
+        static const int mix[] = { 0, 50, 36, 39 }, env[] = { 1, 2, 3, 4 }, fx[] = { 33, 34, 35, 36 };
+        static const char* mixNames[] = { "Level", "Filtre", "Reverb", "Pan" };
+        const int e = isDrum (sel) ? -1 : sounds[(size_t) sel].engine;
+        std::array<KnobDef, kKnobs> d;
+        for (int k = 0; k < kKnobs; ++k)
+        {
+            int id = -1;
+            switch (page[(size_t) sel])
+            {
+                case Page::mix: id = mix[k]; break;
+                case Page::macro: id = se_engine_macro (e, k); break;
+                case Page::edit1: id = SE_P_E0 + k; break;
+                case Page::edit2: id = SE_P_E0 + 4 + k; break;
+                case Page::env: id = env[k]; break;
+                case Page::fx: id = fx[k]; break;
+            }
+            const char* label = nullptr;
+            auto& x = d[(size_t) k];
+            if (id >= 0 && se_describe (e, id, &x.min, &x.max, &x.def, &label) && label != nullptr
+                && juce::String (label) != "-" && x.max > x.min)
+            {
+                x.param = id;
+                x.valid = true;
+                x.label = page[(size_t) sel] == Page::mix ? juce::String (mixNames[k]) : juce::String (label);
+            }
+        }
+        return d;
+    }
+    juce::String format (const KnobDef& d, int v) const
+    {
+        if (const char* n = se_value_name (isDrum (sel) ? -1 : sounds[(size_t) sel].engine, d.param, v)) return n;
+        if (d.param == SE_P_TFLT) return v == 0 ? juce::String ("off") : (v < 0 ? "LP " : "HP ") + juce::String (std::abs (v));
+        if (d.param == SE_P_PAN) return v == 0 ? juce::String ("C") : (v < 0 ? "L" : "R") + juce::String (std::abs (v));
+        return juce::String (v);
+    }
+    void setPage (Page p) { page[(size_t) sel] = p; notify(); }
     int knob (int k)
     {
+        const auto d = knobDefs()[(size_t) k];
+        if (! d.valid) return 0;
         if (! held.empty())
             if (auto* c = editClip())
-            {
-                auto v = c->data.locks[(size_t) held.front().second][(size_t) k];
-                if (v != kNoLock) return v;
-            }
-        return base[(size_t) sel][(size_t) k];
+                if (const auto v = c->data.lock (held.front().second, d.param); v != kNoLock) return v;
+        return params[(size_t) sel][(size_t) d.param];
     }
     bool knobLocked (int k)
     {
+        const auto d = knobDefs()[(size_t) k];
         auto* c = editClip();
-        return ! held.empty() && c != nullptr && c->data.locks[(size_t) held.front().second][(size_t) k] != kNoLock;
+        return d.valid && ! held.empty() && c != nullptr && c->data.lock (held.front().second, d.param) != kNoLock;
     }
     void setKnob (int k, int v)
     {
-        const auto& d = kKnobDefs[(size_t) k];
+        const auto d = knobDefs()[(size_t) k];
+        if (! d.valid) return;
         v = juce::jlimit (d.min, d.max, v);
         if (! held.empty())
         {
             if (auto* c = editClip())
             {
-                for (auto& [row, s] : held) c->data.locks[(size_t) s][(size_t) k] = (int16_t) v;
+                for (auto& [row, s] : held) c->data.setLock (s, d.param, v);
                 lockedSinceHold = true;
                 stepChanged();
             }
             return;
         }
-        base[(size_t) sel][(size_t) k] = v;
+        params[(size_t) sel][(size_t) d.param] = v;
         audio.setParam (sel, d.param, v);
         notify();
     }
     void resetKnob (int k)
     {
+        const auto d = knobDefs()[(size_t) k];
+        if (! d.valid) return;
         if (! held.empty())
         {
             if (auto* c = editClip())
-                for (auto& [row, s] : held) c->data.locks[(size_t) s][(size_t) k] = kNoLock;
+                for (auto& [row, s] : held) c->data.clearLock (s, d.param);
             lockedSinceHold = true;
             stepChanged();
             return;
         }
-        setKnob (k, kKnobDefs[(size_t) k].def);
+        setKnob (k, d.def);
+    }
+
+    // ---- live recording: a pad played while REC is on goes into the clip the track plays, on the nearest step
+    void toggleRecord() { recording = ! recording; notify(); }
+    void recordHit (int row, int velocity)
+    {
+        if (! recording || ! playing) return;
+        const int t = sel;
+        int slot = audio.playingSlot[t].load();
+        if (slot < 0)                                    // nothing plays on the track: a new clip, playing at once
+        {
+            slot = editSlot[(size_t) t];
+            if (session.at (t, slot)) { slot = 0; while (slot < session.scenes() && session.at (t, slot)) ++slot; }
+            if (slot == session.scenes()) session.addScene();
+            session.at (t, slot) = Session::newClip (t, "Rec " + juce::String (slot + 1));
+            editSlot[(size_t) t] = slot;
+            playlist[(size_t) t] = { slot };
+            sendPlaylist (t, AudioEngine::When::now);
+            notify();
+            return;                                       // (it starts with this bar: the next hits go in)
+        }
+        auto& clip = session.at (t, slot);
+        if (! clip) return;
+        const int pos = audio.position[t].load();
+        if (pos < 0) return;
+        const bool late = audio.stepPhase[t].load() >= 0.5f;   // nearer the next step
+        const int step = late ? (pos + 1) % clip->data.length : pos;
+        auto& d = clip->data;
+        if (d.drum) { auto& x = d.lanes[(size_t) row][(size_t) step]; x.on = 1; x.vel = (uint8_t) velocity; }
+        else
+        {
+            auto& x = d.notes[(size_t) step];
+            x.rows = (uint16_t) (x.rows | 1 << row);
+            x.on = 1;
+            x.vel = (uint8_t) velocity;
+        }
+        if (late) pendingRecord.push_back ({ t, slot, step });   // (it already sounded: not twice)
+        else clipEdited (t, slot);
+        notify();
     }
     bool lockedSinceHold = false;                        // a knob turned while steps were held
 
 private:
+    void readParams()
+    {
+        seenParamSerial = audio.paramSerial.load();
+        for (int t = 0; t < kTracks; ++t)
+            for (int i = 0; i < kParamSlots; ++i) params[(size_t) t][(size_t) i] = audio.paramValue[t][i].load();
+    }
     void sendPlaylist (int t, AudioEngine::When when)
     {
         std::vector<std::pair<int, const ClipData*>> clips;

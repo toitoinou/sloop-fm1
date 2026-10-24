@@ -18,13 +18,13 @@ uint32_t mix (uint32_t h)
 AudioEngine::AudioEngine()
 {
     queue.resize ((size_t) fifo.getTotalSize());
-    for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; hits[t] = 0; }
+    for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; hits[t] = 0; stepPhase[t] = 0.0f; }
     se_init();
-    se_set_bpm (118);
+    se_set_bpm (tempo);
     se_set_kit (kDefaultKit);
     for (int t = 1; t < kTracks; ++t)
         se_set_sound (engineTrack (t), kDefaultSounds[(size_t) t].engine, kDefaultSounds[(size_t) t].preset);
-    for (int t = 0; t < kTracks; ++t) { se_set_length (engineTrack (t), kSteps); publishKnobs (t); }
+    for (int t = 0; t < kTracks; ++t) { se_set_length (engineTrack (t), kSteps); publishParams (t); }
 }
 
 // ------------------------------------------------------------------ the message thread's side
@@ -127,10 +127,13 @@ void AudioEngine::renderEngineBlock()
     staged += frames;
     if (! running.load (std::memory_order_relaxed)) return;
 
+    const float stepFrames = (float) se_sample_rate() * 15.0f / (float) tempo;   // a 1/16 step
     for (int t = 0; t < kTracks; ++t)
     {
         auto& s = tracks[(size_t) t];
         const int pos = se_position (engineTrack (t));
+        framesInStep[(size_t) t] = pos == s.lastPos ? framesInStep[(size_t) t] + frames : 0;
+        stepPhase[t].store (juce::jlimit (0.0f, 1.0f, (float) framesInStep[(size_t) t] / stepFrames), std::memory_order_relaxed);
         if (pos == s.lastPos) continue;
         const int len = s.n ? s.clips[s.idx].length : kSteps;
         if (pos == len - 1)
@@ -172,7 +175,7 @@ void AudioEngine::apply (Command& c)
                 }
             }
             break;
-        case Type::bpm: se_set_bpm (c.a); break;
+        case Type::bpm: tempo = c.a; se_set_bpm (c.a); break;
         case Type::fill:
             fill = c.a != 0;
             se_set_fill (0);                         // the app resolves the fill conditions itself (per drum sound)
@@ -181,7 +184,7 @@ void AudioEngine::apply (Command& c)
                     writeSteps (t, -1, tracks[(size_t) t].lastStepPending ? kSteps - 1 : -1);
             break;
         case Type::param: se_set_param (engineTrack (c.a), c.b, c.c); break;
-        case Type::sound: se_set_sound (engineTrack (c.a), c.b, c.c); publishKnobs (c.a); break;
+        case Type::sound: se_set_sound (engineTrack (c.a), c.b, c.c); publishParams (c.a); break;
         case Type::kit: se_set_kit (c.a); break;
         case Type::hit: se_drum_hit (c.a, c.b); break;
         case Type::note: se_note (engineTrack (c.a), c.b, c.c); break;
@@ -216,10 +219,13 @@ void AudioEngine::apply (Command& c)
     }
 }
 
-void AudioEngine::publishKnobs (int t)
+void AudioEngine::publishParams (int t)
 {
-    for (int k = 0; k < kKnobs; ++k) knobValue[t][k] = se_param (engineTrack (t), kKnobDefs[(size_t) k].param);
-    knobSerial.fetch_add (1);
+    int16_t p[kParamSlots] {};
+    jassert (se_param_count() <= kParamSlots);
+    se_params (engineTrack (t), p);
+    for (int i = 0; i < kParamSlots; ++i) paramValue[t][i] = p[i];
+    paramSerial.fetch_add (1);
 }
 
 void AudioEngine::startTransport()
@@ -319,10 +325,8 @@ void AudioEngine::writeSteps (int t, int onlyStep, int skipStep)
     se_lock_t locks[SE_MAX_LOCKS];
     int count = 0;
     if (c != nullptr)
-        for (int step = 0; step < kSteps; ++step)
-            for (int k = 0; k < kKnobs; ++k)
-                if (c->locks[(size_t) step][(size_t) k] != kNoLock && count < SE_MAX_LOCKS)
-                    locks[count++] = { (uint8_t) step, (uint8_t) kKnobDefs[(size_t) k].param, c->locks[(size_t) step][(size_t) k] };
+        for (int i = 0; i < c->nLocks && count < SE_MAX_LOCKS; ++i)
+            locks[count++] = { c->locks[(size_t) i].step, c->locks[(size_t) i].param, c->locks[(size_t) i].value };
     se_set_locks (et, locks, count);
 }
 } // namespace sloop
