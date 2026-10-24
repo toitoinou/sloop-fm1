@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "MainComponent.h"
 
+#ifndef JUCE_APPLICATION_NAME_STRING                 // the CMake build defines them; the Projucer one (Android) does not
+ #define JUCE_APPLICATION_NAME_STRING "SLOOP Touch"
+ #define JUCE_APPLICATION_VERSION_STRING JUCE_STRINGIFY (JUCE_APP_VERSION)
+#endif
+
 class SloopTouchApplication : public juce::JUCEApplication
 {
 public:
