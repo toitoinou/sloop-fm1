@@ -1,0 +1,5 @@
+# JUCE checkout, Projucer output and the engine's generated tables (mobile/README.md)
+app/JUCE
+app/Builds/
+app/JuceLibraryCode/
+engine/gen/
