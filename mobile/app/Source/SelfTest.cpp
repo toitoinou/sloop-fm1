@@ -53,6 +53,14 @@ int runSelfTest()
     const int second = audio.playingSlot[1].load();
     check (first != second && (first == 0 || first == 1) && (second == 0 || second == 1), "a chain takes turns");
 
+    const int serial = audio.knobSerial.load();
+    ctl.setSound (1, 9, 2);                               // T1: FM6 · ROUND BASS
+    ctl.setSound (0, -1, 6);                              // DR: the 909 kit
+    run (0.2);
+    ctl.poll();
+    check (audio.knobSerial.load() > serial && ctl.seenKnobSerial == audio.knobSerial.load(),
+           "a new sound reports its knobs back");
+
     ctl.stopTrack (2);
     run (bar * 1.1);
     check (audio.playingSlot[2].load() == -1, "a stopped track stops at the bar");

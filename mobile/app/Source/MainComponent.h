@@ -15,6 +15,7 @@ public:
     void resized() override;
     void showTabNamed (const juce::String& name)
     {
+        if (name.startsWith ("sound")) { ctl.select (name.getTrailingIntValue() % kTracks); openSound(); return; }
         showTab (name == "grid" ? Tab::grid : name == "pads" ? Tab::pads : Tab::session);
     }
 
@@ -24,6 +25,8 @@ private:
     void showTab (Tab);
     void refresh();
     void openSheet (int row, int step);
+    void openSound();
+    void showSheet (std::unique_ptr<juce::Component>);
     void tap();
 
     theme::LookAndFeel look;
@@ -40,7 +43,7 @@ private:
     StepGrid grid { ctl, [this] (int r, int s) { openSheet (r, s); } };
     PadsView pads { ctl };
     KnobStrip knobs { ctl };
-    std::unique_ptr<StepSheet> sheet;
+    std::unique_ptr<juce::Component> sheet;          // the step sheet or the sound sheet
     Tab tab = Tab::session;
     std::vector<double> taps;
 };

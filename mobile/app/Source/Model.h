@@ -76,6 +76,12 @@ constexpr std::array<KnobDef, kKnobs> kKnobDefs {{ { "Level", 0, 0, 127, 104 }, 
                                                    { "Reverb", 36, 0, 127, 0 }, { "Pan", 39, -64, 63, 0 } }};
 constexpr int kParamMute = 40;      // core.h P_MUTE
 
+// The sounds at start: a kit for DR, an engine and a preset for T1..T3 (sloop_engine.h se_*_name)
+struct Sound { int engine, preset; };
+constexpr int kDefaultKit = 15;                                         // HOUSE
+constexpr std::array<Sound, kTracks> kDefaultSounds {{ { -1, kDefaultKit }, { 0, 2 }, { 1, 0 }, { 6, 6 } }};
+                                                                        // -, ANALOG SUB BASS, DIGITAL RHODES, TRIO SYNC LEAD
+
 // do mineur naturel, as the mockup: the piano roll only shows the scale's notes
 inline int rowNote (int track, int row)
 {

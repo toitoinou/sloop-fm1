@@ -10,7 +10,7 @@ public:
 
     void initialise (const juce::String& args) override
     {
-        // --snapshot out.png WIDTHxHEIGHT [session|grid|pads]: draws the screen into a PNG and quits
+        // --snapshot out.png WIDTHxHEIGHT [session|grid|pads|sound[N]]: draws the screen into a PNG and quits
         // (to look at the layout without a device, e.g. in CI)
         auto a = juce::StringArray::fromTokens (args, true);
         if (a.contains ("--selftest"))

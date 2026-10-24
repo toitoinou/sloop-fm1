@@ -71,7 +71,7 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 ## Feuille de route
 
 - [ ] Tester la latence et la charge CPU sur de vrais téléphones (Oboe est activé).
-- [ ] Choisir le son de chaque piste (les 12 moteurs, 153 sons, 37 kits : `se_engine_name`, `se_kit_name`…).
+- [x] Choisir le son de chaque piste : touche le nom du son en haut des potards (les 12 moteurs et leurs presets, les kits).
 - [ ] Longueur des clips par piste (8 à 64 pas) pour des boucles décalées.
 - [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
 - [ ] Enregistrer en jouant sur les pads, note repeat, sauvegarde des projets.

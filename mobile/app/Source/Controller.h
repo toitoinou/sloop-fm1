@@ -14,7 +14,7 @@ public:
     {
         for (int t = 0; t < kTracks; ++t)
         {
-            for (int k = 0; k < kKnobs; ++k) base[(size_t) t][(size_t) k] = kKnobDefs[(size_t) k].def;
+            for (int k = 0; k < kKnobs; ++k) base[(size_t) t][(size_t) k] = audio.knobValue[t][k].load();
             if (session.at (t, 0)) { playlist[(size_t) t] = { 0 }; sendPlaylist (t, AudioEngine::When::now); }
         }
     }
@@ -29,6 +29,8 @@ public:
     std::array<bool, kTracks> muted {};
     std::array<std::array<int, kKnobs>, kTracks> base;
     std::vector<std::pair<int, int>> held;               // the steps held (row, step): knobs lock them
+    std::array<Sound, kTracks> sounds = kDefaultSounds;   // DR: { -, kit }
+    int seenKnobSerial = 0;
     bool playing = false;
     int bpm = 118;
     std::function<void()> changed;                       // every screen repaints
@@ -54,6 +56,13 @@ public:
         notify();
     }
     void setBpm (int b) { bpm = juce::jlimit (60, 200, b); audio.setBpm (bpm); notify(); }
+    void setSound (int t, int engine, int preset)
+    {
+        sounds[(size_t) t] = { engine, preset };
+        if (isDrum (t)) audio.setKit (preset);
+        else audio.setSound (t, engine, preset);
+        notify();
+    }
     void setMute (int t, bool m) { muted[(size_t) t] = m; audio.setParam (t, kParamMute, m ? 1 : 0); notify(); }
 
     // ---- session
@@ -94,6 +103,13 @@ public:
     void poll()
     {
         bool any = false;
+        if (const int s = audio.knobSerial.load(); s != seenKnobSerial)     // a sound brought its own sends
+        {
+            seenKnobSerial = s;
+            for (int t = 0; t < kTracks; ++t)
+                for (int k = 0; k < kKnobs; ++k) base[(size_t) t][(size_t) k] = audio.knobValue[t][k].load();
+            any = true;
+        }
         for (int t = 0; t < kTracks; ++t)
         {
             auto q = queued[(size_t) t];

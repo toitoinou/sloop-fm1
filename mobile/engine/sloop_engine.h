@@ -35,13 +35,15 @@ int se_position(int track);                   /* the step playing, -1 when stopp
 void se_set_fill(int on);                     /* held FILL: steps SE_FILL_ONLY play, SE_FILL_NOT do not */
 void se_panic(void);
 
-/* sounds */
+/* sounds. The names and counts read constant tables only: they may be called from any thread */
 int se_engine_count(void);
 const char *se_engine_name(int engine);
 int se_preset_count(int engine);
 const char *se_preset_name(int engine, int preset);
-void se_set_sound(int track, int engine, int preset);   /* synth tracks */
-int se_kit_count(void);
+void se_set_sound(int track, int engine, int preset);   /* synth tracks: the engine and the whole preset */
+int se_sound_engine(int track);
+int se_sound_preset(int track);
+int se_kit_count(void);                       /* (USR1..USR3+4 play the user sample slots: empty in the app) */
 const char *se_kit_name(int kit);
 void se_set_kit(int kit);
 const char *se_lane_name(int lane);

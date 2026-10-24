@@ -129,6 +129,7 @@ class KnobStrip : public juce::Component
 {
 public:
     explicit KnobStrip (Controller& c) : ctl (c) {}
+    std::function<void()> onSound;                   // the title (the track's sound) tapped
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -136,6 +137,7 @@ public:
 
 private:
     juce::Rectangle<int> knobRect (int k) const;
+    juce::Rectangle<int> titleRect() const { return getLocalBounds().reduced (12, 8).removeFromTop (22); }
     int knobAt (juce::Point<int>) const;
     static juce::String format (int k, int v);
     Controller& ctl;
@@ -163,6 +165,31 @@ private:
     juce::TextButton early { "< avant" }, late { juce::String::fromUTF8 ("après >") }, clearLocks { "Effacer les locks" }, del { "Supprimer" },
         ok { "OK" };
     juce::Slider vel;
+};
+
+// the sound of the selected track: a kit for DR; an engine, then one of its presets, for T1..T3. A choice plays at
+// once (a note or a few hits), the sheet stays open to try the next one
+class SoundSheet : public juce::Component
+{
+public:
+    SoundSheet (Controller& c, std::function<void()> close);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    void showEngine (int engine);
+    void sync();
+    void audition();
+    juce::Rectangle<int> panel() const;
+    Controller& ctl;
+    std::function<void()> onClose;
+    int engineShown = 0;
+    juce::Component engineRow, itemGrid;
+    juce::Viewport engineView, itemView;
+    juce::OwnedArray<juce::TextButton> engineButtons, itemButtons;
+    juce::Array<int> itemIds;                        // the preset or kit each item button picks
+    juce::TextButton ok { "OK" };
 };
 
 // a button that is on only while a finger holds it (FILL)

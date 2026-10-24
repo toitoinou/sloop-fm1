@@ -16,6 +16,7 @@ MainComponent::MainComponent()
     tabSession.onClick = [this] { showTab (Tab::session); };
     tabGrid.onClick = [this] { showTab (Tab::grid); };
     tabPads.onClick = [this] { showTab (Tab::pads); };
+    knobs.onSound = [this] { openSound(); };
     ctl.changed = [this] { refresh(); };
     showTab (Tab::session);
 
@@ -113,14 +114,25 @@ void MainComponent::refresh()
 
 void MainComponent::timerCallback() { ctl.poll(); }
 
-void MainComponent::openSheet (int row, int step)
+void MainComponent::showSheet (std::unique_ptr<juce::Component> s)
 {
-    sheet = std::make_unique<StepSheet> (ctl, row, step, [this]
-    {
-        juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
-    });
+    sheet = std::move (s);
     addAndMakeVisible (*sheet);
     sheet->setBounds (getLocalBounds());
+}
+void MainComponent::openSheet (int row, int step)
+{
+    showSheet (std::make_unique<StepSheet> (ctl, row, step, [this]
+    {
+        juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
+    }));
+}
+void MainComponent::openSound()
+{
+    showSheet (std::make_unique<SoundSheet> (ctl, [this]
+    {
+        juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
+    }));
 }
 
 void MainComponent::tap()

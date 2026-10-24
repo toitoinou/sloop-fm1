@@ -21,11 +21,10 @@ AudioEngine::AudioEngine()
     for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; hits[t] = 0; }
     se_init();
     se_set_bpm (118);
-    se_set_kit (15);                                 // HOUSE
-    se_set_sound (engineTrack (1), 0, 2);            // ANALOG · SUB BASS
-    se_set_sound (engineTrack (2), 1, 0);            // DIGITAL · RHODES
-    se_set_sound (engineTrack (3), 6, 6);            // TRIO · SYNC LEAD
-    for (int t = 0; t < kTracks; ++t) se_set_length (engineTrack (t), kSteps);
+    se_set_kit (kDefaultKit);
+    for (int t = 1; t < kTracks; ++t)
+        se_set_sound (engineTrack (t), kDefaultSounds[(size_t) t].engine, kDefaultSounds[(size_t) t].preset);
+    for (int t = 0; t < kTracks; ++t) { se_set_length (engineTrack (t), kSteps); publishKnobs (t); }
 }
 
 // ------------------------------------------------------------------ the message thread's side
@@ -182,7 +181,7 @@ void AudioEngine::apply (Command& c)
                     writeSteps (t, -1, tracks[(size_t) t].lastStepPending ? kSteps - 1 : -1);
             break;
         case Type::param: se_set_param (engineTrack (c.a), c.b, c.c); break;
-        case Type::sound: se_set_sound (engineTrack (c.a), c.b, c.c); break;
+        case Type::sound: se_set_sound (engineTrack (c.a), c.b, c.c); publishKnobs (c.a); break;
         case Type::kit: se_set_kit (c.a); break;
         case Type::hit: se_drum_hit (c.a, c.b); break;
         case Type::note: se_note (engineTrack (c.a), c.b, c.c); break;
@@ -215,6 +214,12 @@ void AudioEngine::apply (Command& c)
             break;
         }
     }
+}
+
+void AudioEngine::publishKnobs (int t)
+{
+    for (int k = 0; k < kKnobs; ++k) knobValue[t][k] = se_param (engineTrack (t), kKnobDefs[(size_t) k].param);
+    knobSerial.fetch_add (1);
 }
 
 void AudioEngine::startTransport()

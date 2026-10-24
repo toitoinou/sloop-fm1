@@ -32,6 +32,8 @@ public:
     std::atomic<int> position[kTracks];      // its step, -1 stopped
     std::atomic<bool> running { false };
     std::atomic<int> hits[kTracks];          // counts up when a track plays a step (the rail's LEDs)
+    std::atomic<int> knobValue[kTracks][kKnobs];   // the knobs' parameters as the engine has them (a sound sets
+    std::atomic<int> knobSerial { 0 };             // its sends): counts up when they change
 
     // ---- juce::AudioIODeviceCallback
     void audioDeviceIOCallbackWithContext (const float* const*, int, float* const* out, int numOut, int numSamples,
@@ -68,6 +70,7 @@ private:
         int reportSlot = -1;
     };
     void renderEngineBlock();
+    void publishKnobs (int track);
     void startTransport();
     void prepareNextLoop (int t);
     void writeSteps (int t, int onlyStep, int skipStep);

@@ -40,11 +40,53 @@ const char *se_preset_name(int engine, int preset)
     if (preset < 0 || preset >= se_preset_count(engine)) return "";
     return ENGINES[engine]->presets[preset].name;
 }
+/* what loading a sound leaves alone: the mix, the pattern and the key (as ui.c param_kept) */
+static int se_param_kept(uint32_t i)
+{
+    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_SLEN && i <= P_SGATE) ||
+           (i >= P_ROOT && i <= P_QUANT) || i == P_CHORD || i == P_TFLT || i == P_STRUM || i == P_VLEAD;
+}
+/* the engine, then the whole preset, as the FM-1 loads one (ui.c set_engine_of, apply_preset_to; ui.c is not in
+ * this translation unit): the old sound fades out, what sounds is released, the arpeggiator comes with the preset */
 void se_set_sound(int track, int engine, int preset)
 {
+    static const uint8_t FX_DEF[4] = {0, 24, 28, 36};
+    track_t *t;
+    const engine_t *e;
+    const preset_t *pr;
+    uint32_t i;
     if (track < 0 || track >= NPART || preset < 0 || preset >= se_preset_count(engine)) return;
-    preview_track((uint32_t)track, (uint32_t)engine, (uint32_t)preset);
+    t = &trk[track];
+    e = ENGINES[engine];
+    pr = &e->presets[preset];
+    locks_restore(t);
+    sound_change(t);
+    if (t->eng_req != engine) {
+        t->eng_req = (uint8_t)engine;
+        for (i = 0; i < 8u; i++) t->p[P_E0 + i] = e->edit[i].def;
+    }
+    panic_req |= (uint8_t)(1u << track);
+    t->user = 0;
+    t->preset = (uint8_t)preset;
+    for (i = 0; i < P_E0; i++)
+        if (!se_param_kept(i)) t->p[i] = TP[i].def;
+    for (i = 0; i < 8u; i++) t->p[P_E0 + i] = (int16_t)pr->e[i];
+    t->p[P_ATK] = pr->env[0];
+    t->p[P_DEC] = pr->env[1];
+    t->p[P_SUS] = pr->env[2];
+    t->p[P_REL] = pr->env[3];
+    t->p[P_ED_FLT] = pr->fenv;
+    t->p[P_ED_FX] = preset_trim((uint32_t)engine, (uint32_t)preset);
+    t->p[P_VOICE] = pr->mono ? V_LEGATO : V_POLY;
+    for (i = 0; i < 4u; i++) {
+        t->p[P_DIST + i] = (int16_t)(pr->fx[i] ? pr->fx[i] - 1 : FX_DEF[i]);
+        t->p[P_AMODE + i] = (int16_t)(pr->arp[i] ? pr->arp[i] - 1 : TP[P_AMODE + i].def);
+    }
+    preset_extras(t->p, pr);
+    fm6_track_loaded(t);
 }
+int se_sound_engine(int track) { return track >= 0 && track < NPART ? trk[track].eng_req : -1; }
+int se_sound_preset(int track) { return track >= 0 && track < NPART ? trk[track].preset : -1; }
 int se_kit_count(void) { return (int)(DRUM_KITS < NELEM(DRUM_KIT_NAMES) ? DRUM_KITS : NELEM(DRUM_KIT_NAMES)); }
 const char *se_kit_name(int kit) { return kit >= 0 && kit < se_kit_count() ? DRUM_KIT_NAMES[kit] : ""; }
 void se_set_kit(int kit) { preview_param(TRK_DRUM, P_E0, kit); }
