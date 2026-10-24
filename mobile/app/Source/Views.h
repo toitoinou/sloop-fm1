@@ -94,7 +94,7 @@ private:
     int firstStep() const { return narrow() ? stepPage * 8 : 0; }
     int visibleSteps() const { return narrow() ? 8 : kSteps; }
     juce::Rectangle<int> gridArea() const { return getLocalBounds().withTrimmedTop (headH + theme::gap); }
-    int labelW() const { return narrow() ? 62 : 84; }
+    int labelW() const { return (int) ((narrow() ? 62.0f : 84.0f) * theme::textScale); }
     bool cellAt (juce::Point<int>, int& row, int& step) const;
     int columnAt (int x) const;                      // the step under x (clamped to the visible ones)
     int labelAt (juce::Point<int>) const;
@@ -121,8 +121,19 @@ public:
 private:
     juce::Rectangle<int> padsArea() const;
     int padAt (juce::Point<int>) const;
-    int padSound (int pad) const { return (3 - pad / 4) * 4 + pad % 4; }   // the first sound bottom left, as an MPC
+    juce::Rectangle<int> layoutRect (int i) const;   // the QFG / MPC switch (drums)
+    // the drums as Quest for Groove lays them out (the kick and the snare doubled, for two hands), or the 16 lanes
+    // in order from the bottom left as an MPC; the synth tracks always the second way (the notes rising)
+    int padSound (int pad) const
+    {
+        static constexpr int qfgLanes[16] = { 9, 14, 10, 11,      // low tom, mid tom (conga), high tom, crash
+                                              4, 5, 4, 12,        // hat, open hat, hat, ride
+                                              7, 2, 2, 7,         // rim (sidestick), snare, snare, rim
+                                              3, 0, 0, 13 };      // clap, kick, kick, shaker
+        return isDrum (ctl.sel) && qfg ? qfgLanes[pad] : (3 - pad / 4) * 4 + pad % 4;
+    }
     Controller& ctl;
+    bool qfg = true;
     std::map<int, std::pair<int, float>> down;                             // finger -> (pad, velocity)
 };
 

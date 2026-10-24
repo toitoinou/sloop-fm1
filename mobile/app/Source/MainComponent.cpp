@@ -44,18 +44,24 @@ void MainComponent::paint (juce::Graphics& g) { g.fillAll (theme::bg); }
 
 void MainComponent::resized()
 {
-    auto r = getLocalBounds().reduced (12, 10);
-    const int g = 8;
+    // a phone (the short side under 500 dp): bigger text, thinner margins, every dp to the stage
+    const bool phone = juce::jmin (getWidth(), getHeight()) < 500;
+    theme::textScale = phone ? 1.2f : 1.0f;
+    auto r = getLocalBounds();
+    if (auto* d = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds()); d != nullptr && isOnDesktop())
+        r = d->safeAreaInsets.subtractedFrom (r);   // (the notch, the rounded corners)
+    r = r.reduced (phone ? 6 : 12, phone ? 6 : 10);
+    const int g = phone ? 6 : 8;
     juce::Rectangle<int> stage;
     if (getWidth() > getHeight())
     {
         // landscape: rail | stage | device
         const bool big = getWidth() >= 1000;
-        auto left = r.removeFromLeft (big ? 150 : 120);
+        auto left = r.removeFromLeft (big ? 150 : phone ? 128 : 120);
         r.removeFromLeft (g);
-        auto right = r.removeFromRight (big ? 300 : 200);
+        auto right = r.removeFromRight (big ? 300 : phone ? 216 : 200);
         r.removeFromRight (g);
-        const int bh = big ? 46 : 40;
+        const int bh = big ? 46 : phone ? 44 : 40;
         auto top = left.removeFromTop (bh);
         playButton.setBounds (top.removeFromLeft (top.getWidth() / 2 - 3)); top.removeFromLeft (6);
         recButton.setBounds (top);
@@ -65,7 +71,7 @@ void MainComponent::resized()
         tapButton.setBounds (second);
         left.removeFromTop (g);
         rail.setBounds (left);
-        auto perf = right.removeFromTop (bh * 2 + 6);
+        auto perf = right.removeFromTop (phone ? bh : bh * 2 + 6);
         fillButton.setBounds (perf.removeFromLeft (perf.getWidth() / 2 - 3)); perf.removeFromLeft (6);
         stopClips.setBounds (perf);
         right.removeFromTop (g);
@@ -91,7 +97,7 @@ void MainComponent::resized()
         r.removeFromBottom (g);
         stage = r;
     }
-    auto tabs = stage.removeFromTop (38);
+    auto tabs = stage.removeFromTop (phone ? 42 : 38);
     for (auto* b : { &tabSession, &tabGrid, &tabPads, &projectButton })
     {
         b->setBounds (tabs.removeFromLeft (juce::jmin (100, (stage.getWidth() - 18) / 5))); tabs.removeFromLeft (6);

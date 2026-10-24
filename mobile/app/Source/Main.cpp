@@ -58,16 +58,23 @@ private:
         explicit Window (const juce::String& name)
             : DocumentWindow (name, juce::Colour (0xff151618), DocumentWindow::allButtons)
         {
-            setUsingNativeTitleBar (true);
             setContentOwned (new sloop::MainComponent(), true);
            #if JUCE_ANDROID || JUCE_IOS
+            // no title bar on a phone, and the whole screen (the status and navigation bars hidden, a swipe from the
+            // edge shows them for a moment)
+            setUsingNativeTitleBar (false);
+            setTitleBarHeight (0);
             setFullScreen (true);
            #else
+            setUsingNativeTitleBar (true);
             setResizable (true, true);
             setResizeLimits (360, 360, 4000, 4000);
             centreWithSize (getWidth(), getHeight());
            #endif
             setVisible (true);
+           #if JUCE_ANDROID || JUCE_IOS
+            juce::Desktop::getInstance().setKioskModeComponent (this, false);
+           #endif
         }
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
     };

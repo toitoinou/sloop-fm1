@@ -584,8 +584,12 @@ void StepGrid::mouseUp (const juce::MouseEvent& e)
 // =================================================================== pads
 juce::Rectangle<int> PadsView::padsArea() const
 {
-    const int side = juce::jmin (getWidth(), getHeight());
-    return getLocalBounds().withSizeKeepingCentre (side, side);
+    // the whole stage: a wide pad is an easier target than a square one
+    return isDrum (ctl.sel) ? getLocalBounds().withTrimmedTop (36) : getLocalBounds();
+}
+juce::Rectangle<int> PadsView::layoutRect (int i) const
+{
+    return { i * 76, 0, 72, 30 };
 }
 int PadsView::padAt (juce::Point<int> p) const
 {
@@ -597,11 +601,22 @@ int PadsView::padAt (juce::Point<int> p) const
 void PadsView::paint (juce::Graphics& g)
 {
     auto a = padsArea().toFloat();
-    const float cell = a.getWidth() / 4;
+    const float w = a.getWidth() / 4, h = a.getHeight() / 4;
     const auto col = theme::track (ctl.sel);
+    if (isDrum (ctl.sel))
+        for (int i = 0; i < 2; ++i)
+        {
+            const bool on = (i == 0) == qfg;
+            auto r = layoutRect (i).toFloat();
+            g.setColour (on ? theme::fg : theme::panel);
+            g.fillRoundedRectangle (r, theme::radius);
+            g.setColour (on ? theme::ink : theme::fg);
+            g.setFont (font (12.0f, true));
+            g.drawText (i == 0 ? "QFG" : "MPC", r, juce::Justification::centred);
+        }
     for (int i = 0; i < 16; ++i)
     {
-        auto r = juce::Rectangle<float> (a.getX() + (float) (i % 4) * cell, a.getY() + (float) (i / 4) * cell, cell, cell).reduced (4.0f);
+        auto r = juce::Rectangle<float> (a.getX() + (float) (i % 4) * w, a.getY() + (float) (i / 4) * h, w, h).reduced (3.0f);
         const int snd = padSound (i);
         g.setColour (theme::panel);
         g.fillRoundedRectangle (r, 6.0f);
@@ -615,11 +630,14 @@ void PadsView::paint (juce::Graphics& g)
         g.setColour (theme::fg);
         g.setFont (font (13.0f, true));
         g.drawText (isDrum (ctl.sel) ? juce::String (kLaneNames[snd]) : noteName (rowNote (ctl.sel, snd)),
-                    r.reduced (10.0f, 8.0f), juce::Justification::bottomLeft, true);
+                    r.reduced (8.0f, 6.0f), juce::Justification::bottomLeft, true);
     }
 }
 void PadsView::mouseDown (const juce::MouseEvent& e)
 {
+    if (isDrum (ctl.sel))
+        for (int i = 0; i < 2; ++i)
+            if (layoutRect (i).contains (e.getPosition())) { qfg = i == 0; repaint(); return; }
     const int pad = padAt (e.getPosition());
     if (pad < 0) return;
     auto a = padsArea();

@@ -16,9 +16,12 @@ inline juce::Colour track (int t)
 }
 constexpr float radius = 4.0f;
 constexpr int gap = 2;
+// the text grows on a phone (MainComponent::resized sets it from the screen): sizes are in dp there, and 12 dp
+// is too small to read at arm's length
+inline float textScale = 1.0f;
 inline juce::Font font (float h, bool bold = false)
 {
-    return juce::Font (juce::FontOptions (h, bold ? juce::Font::bold : juce::Font::plain));
+    return juce::Font (juce::FontOptions (h * textScale, bold ? juce::Font::bold : juce::Font::plain));
 }
 
 // buttons drawn flat, the "on" state inverted, as the mockup's .ctl / .ctl.on
@@ -52,7 +55,7 @@ struct LookAndFeel : juce::LookAndFeel_V4
     juce::Font getTextButtonFont (juce::TextButton& b, int h) override
     {
         if (b.findColour (juce::TextButton::buttonColourId).isTransparent()) return font (12.0f);
-        return font (juce::jmin (15.0f, (float) h * 0.42f), true);
+        return font (juce::jmin (15.0f, (float) h * 0.42f / textScale), true);
     }
 };
 } // namespace sloop::theme
