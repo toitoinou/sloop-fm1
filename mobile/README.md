@@ -1,0 +1,83 @@
+# SLOOP Touch (mobile)
+
+Une appli de groovebox tactile pour Android (puis iOS) construite sur le moteur audio de SLOOP : les mêmes
+moteurs de synthèse, kits, effets et séquenceur que le FM-1, avec une interface pensée pour le doigt.
+
+État : **squelette**. Le moteur tourne, la Session (clips et scènes), la grille de batterie / le piano roll,
+les pads et les potards fonctionnent ; il manque encore beaucoup de choses (voir la feuille de route).
+
+## Ce qu'il y a dans ce dossier
+
+| Dossier | Contenu |
+| --- | --- |
+| `mockup/` | La maquette HTML jouable qui sert de référence pour l'interface (gestes, disposition, styles). Ouvre `mockup/sloop-touch.html` dans un navigateur ; on la fait évoluer pour essayer des idées avant de les coder en C++. |
+| `engine/` | Le moteur de SLOOP sous forme de bibliothèque C (`sloop_engine.h`), autour de `firmware/host/preview.c`, l'adaptateur que l'aperçu du web editor utilise déjà. Aucun fichier du firmware n'est modifié. |
+| `tools/gen_engine_tables.sh` | Génère les tables du moteur (formes d'onde, échantillons, kits, patchs FM6) avec les générateurs du firmware, dans `engine/gen/`. |
+| `app/` | L'appli JUCE 8 (C++17) : `CMakeLists.txt` pour le bureau, `SloopTouch.jucer` pour Android. |
+
+## Architecture
+
+```
+UI JUCE (thread des messages)                 thread audio
+  Session / Grille / Pads / Potards
+        │ gestes                                 AudioEngine (AudioIODeviceCallback)
+        ▼                                          │ applique les commandes entre deux blocs
+  Controller ──► file sans verrou (commandes) ──► │ clips en attente de la mesure, chaînes,
+        ▲                                          │ probabilités et conditions des pas
+        └──── atomics (clip joué, position) ◄──── │ sloop_engine (C) → 44,1 kHz → rééchantillonné
+```
+
+- Le moteur de SLOOP ne joue qu'un motif par piste. La Session vit dans l'appli : au début de la dernière
+  étape de chaque boucle, le thread audio écrit dans le moteur le clip suivant (clip lancé, chaîne, arrêt), avec
+  ses probabilités et ses conditions (1:2, 2:2, 1:4, Fill, Sans fill) déjà tirées pour ce tour.
+- L'interface ne touche jamais au moteur : elle poste des commandes, le thread audio les applique.
+- Pistes de l'appli : DR (la piste batterie de SLOOP, n° 3) puis T1–T3 (ses parties synthé 0–2).
+
+## Compiler et lancer sur ordinateur (Linux, macOS, Windows)
+
+```
+git clone --depth 1 --branch 8.0.4 https://github.com/juce-framework/JUCE.git mobile/app/JUCE
+cmake -S mobile/app -B build-mobile -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-mobile
+```
+
+Sans `mobile/app/JUCE`, CMake télécharge JUCE 8.0.4 tout seul. Le moteur se compile avec clang (les tests du
+firmware notent que GCC ne termine pas la compilation de l'adaptateur). Sous Linux il faut les paquets de
+développement d'ALSA, X11, Freetype et Fontconfig (voir `.github/workflows/mobile.yml`).
+
+L'appli a deux modes en ligne de commande, utilisés par la CI :
+
+- `--selftest` : fait tourner le moteur sans carte son et vérifie le séquencement (lancement à la mesure,
+  chaînes, arrêt, son non nul) ;
+- `--snapshot sortie.png 844x390 [session|grid|pads]` : dessine l'écran dans une image, pour regarder la
+  disposition sans appareil.
+
+## Android
+
+JUCE ne sait pas faire d'Android avec CMake : on passe par Projucer, qui génère un projet Gradle.
+
+```
+mobile/tools/gen_engine_tables.sh
+Projucer --resave mobile/app/SloopTouch.jucer       # -> mobile/app/Builds/Android
+cd mobile/app/Builds/Android && ./gradlew assembleDebug
+```
+
+Il faut le SDK Android avec le NDK `26.2.11394342` et CMake `3.22.1` (les versions que JUCE 8.0.4 écrit dans le
+projet). On peut aussi ouvrir `mobile/app/Builds/Android` dans Android Studio.
+
+**La CI fait tout ça** : à chaque push qui touche `mobile/`, le workflow *Mobile app* construit l'APK de debug
+et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (section *Artifacts* du run).
+
+## Feuille de route
+
+- [ ] Tester la latence et la charge CPU sur de vrais téléphones (Oboe est activé).
+- [ ] Choisir le son de chaque piste (les 12 moteurs, 153 sons, 37 kits : `se_engine_name`, `se_kit_name`…).
+- [ ] Longueur des clips par piste (8 à 64 pas) pour des boucles décalées.
+- [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
+- [ ] Enregistrer en jouant sur les pads, note repeat, sauvegarde des projets.
+- [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
+- [ ] Une piste guitare (NAM / TONE3000).
+
+## Licence
+
+GPL-3.0-only, comme SLOOP et Felucca. JUCE est utilisé sous sa licence AGPLv3, compatible avec le GPL-3.0.

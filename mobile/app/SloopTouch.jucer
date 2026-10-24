@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- SLOOP Touch for Android (Projucer -> Builds/Android, an Android Studio / Gradle project).
+     JUCE is expected in mobile/app/JUCE (a checkout of JUCE 8.0.4, not in the repository), and the engine's
+     generated tables in mobile/engine/gen (mobile/tools/gen_engine_tables.sh). The CI does both:
+     .github/workflows/mobile.yml. The header paths are relative to the exporter folder, Builds/Android
+     (Projucer moves them one level for its app/CMakeLists.txt) -->
+<JUCERPROJECT id="Sl00pT" name="SloopTouch" projectType="guiapp" version="0.1.0" companyName="SLOOP"
+              bundleIdentifier="org.sloop.touch" cppLanguageStandard="17" jucerFormatVersion="1"
+              displaySplashScreen="0" reportAppUsage="0"
+              defines="JUCE_WEB_BROWSER=0&#10;JUCE_USE_CURL=0">
+  <MAINGROUP id="Gr00p0" name="SloopTouch">
+    <GROUP id="Gr00p1" name="Source">
+      <FILE id="Fi0001" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
+      <FILE id="Fi0002" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
+      <FILE id="Fi0003" name="MainComponent.cpp" compile="1" resource="0" file="Source/MainComponent.cpp"/>
+      <FILE id="Fi0004" name="Views.h" compile="0" resource="0" file="Source/Views.h"/>
+      <FILE id="Fi0005" name="Views.cpp" compile="1" resource="0" file="Source/Views.cpp"/>
+      <FILE id="Fi0006" name="Controller.h" compile="0" resource="0" file="Source/Controller.h"/>
+      <FILE id="Fi0007" name="AudioEngine.h" compile="0" resource="0" file="Source/AudioEngine.h"/>
+      <FILE id="Fi0008" name="AudioEngine.cpp" compile="1" resource="0" file="Source/AudioEngine.cpp"/>
+      <FILE id="Fi0013" name="SelfTest.cpp" compile="1" resource="0" file="Source/SelfTest.cpp"/>
+      <FILE id="Fi0009" name="Model.h" compile="0" resource="0" file="Source/Model.h"/>
+      <FILE id="Fi0010" name="Theme.h" compile="0" resource="0" file="Source/Theme.h"/>
+    </GROUP>
+    <GROUP id="Gr00p2" name="Engine">
+      <FILE id="Fi0011" name="sloop_engine.h" compile="0" resource="0" file="../engine/sloop_engine.h"/>
+      <FILE id="Fi0012" name="sloop_engine.c" compile="1" resource="0" file="../engine/sloop_engine.c"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_USE_ANDROID_OBOE="1"/>
+  <EXPORTFORMATS>
+    <ANDROIDSTUDIO targetFolder="Builds/Android" androidMinimumSDK="26" androidTargetSDK="34"
+                   androidScreenOrientation="unspecified"
+                   extraCompilerFlags="-fwrapv -fno-strict-aliasing">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" optimisation="1"
+                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src"/>
+        <CONFIGURATION isDebug="0" name="Release" optimisation="3"
+                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="JUCE/modules"/>
+      </MODULEPATHS>
+    </ANDROIDSTUDIO>
+  </EXPORTFORMATS>
+</JUCERPROJECT>

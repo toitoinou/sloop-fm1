@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SLOOP Touch (mobile/): the Android APK, and a desktop build that draws the screens into PNGs to review the UI.
+# Both are downloadable from the run's page (Artifacts).
+name: Mobile app
+
+on:
+  push:
+    paths: ['mobile/**', 'firmware/**', 'tools/gen_*.py', 'tools/sampleio.py', 'assets/**', '.github/workflows/mobile.yml']
+  pull_request:
+    paths: ['mobile/**', 'firmware/**', 'tools/gen_*.py', 'tools/sampleio.py', 'assets/**', '.github/workflows/mobile.yml']
+  workflow_dispatch:
+
+env:
+  JUCE_VERSION: 8.0.4
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JUCE
+        run: git clone --depth 1 --branch "$JUCE_VERSION" https://github.com/juce-framework/JUCE.git mobile/app/JUCE
+
+      - name: Linux packages for Projucer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libgl1-mesa-dev libcurl4-openssl-dev xvfb
+
+      - name: Projucer (cached)
+        id: projucer
+        uses: actions/cache@v4
+        with:
+          path: projucer
+          key: projucer-${{ runner.os }}-${{ env.JUCE_VERSION }}
+
+      - name: Build Projucer
+        if: steps.projucer.outputs.cache-hit != 'true'
+        run: |
+          cmake -S mobile/app/JUCE -B juce-build -G Ninja -DJUCE_BUILD_EXTRAS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build juce-build --target Projucer
+          mkdir -p projucer
+          cp juce-build/extras/Projucer/Projucer_artefacts/Release/Projucer projucer/
+
+      - name: Engine tables
+        run: mobile/tools/gen_engine_tables.sh
+
+      - name: Android Studio project (Projucer --resave)
+        run: xvfb-run -a projucer/Projucer --resave mobile/app/SloopTouch.jucer
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      # the versions JUCE 8.0.4's exporter writes into Builds/Android/app/build.gradle
+      - name: Android SDK packages
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.2.11394342" "cmake;3.22.1"
+
+      # the generated project signs with ~/.android/debug.keystore (JUCE's default): make one if the runner has none
+      - name: Debug keystore
+        run: |
+          mkdir -p ~/.android
+          [ -f ~/.android/debug.keystore ] || keytool -genkeypair -keystore ~/.android/debug.keystore \
+            -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Build the APK
+        working-directory: mobile/app/Builds/Android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sloop-touch-debug-apk
+          path: mobile/app/Builds/Android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop build and screenshots
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libgl1-mesa-dev xvfb
+
+      - name: JUCE
+        run: git clone --depth 1 --branch "$JUCE_VERSION" https://github.com/juce-framework/JUCE.git mobile/app/JUCE
+
+      - name: Build
+        run: |
+          cmake -S mobile/app -B build-mobile -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          cmake --build build-mobile
+
+      - name: Self-test (the audio side, no device)
+        run: xvfb-run -a "build-mobile/SloopTouch_artefacts/Release/SLOOP Touch" --selftest
+
+      - name: Screenshots
+        run: |
+          app="build-mobile/SloopTouch_artefacts/Release/SLOOP Touch"
+          mkdir -p screenshots
+          for spec in "phone-landscape-session 844x390 session" "phone-landscape-grid 844x390 grid" \
+                      "phone-portrait-session 390x844 session" "tablet-session 1280x800 session" \
+                      "tablet-grid 1280x800 grid" "tablet-pads 1280x800 pads"; do
+            set -- $spec
+            xvfb-run -a "$app" --snapshot "screenshots/$1.png" "$2" "$3"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sloop-touch-screenshots
+          path: screenshots/*.png

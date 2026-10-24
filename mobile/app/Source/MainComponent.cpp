@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "MainComponent.h"
+
+namespace sloop
+{
+MainComponent::MainComponent()
+{
+    setLookAndFeel (&look);
+    for (auto* c : std::initializer_list<juce::Component*> { &playButton, &tapButton, &stopClips, &fillButton, &bpm, &rail,
+                                                             &tabSession, &tabGrid, &tabPads, &session, &grid, &pads, &knobs })
+        addAndMakeVisible (c);
+    playButton.onClick = [this] { ctl.togglePlay(); };
+    tapButton.onClick = [this] { tap(); };
+    stopClips.onClick = [this] { ctl.stopAll(); };
+    fillButton.onHold = [this] (bool on) { audio.setFill (on); };
+    tabSession.onClick = [this] { showTab (Tab::session); };
+    tabGrid.onClick = [this] { showTab (Tab::grid); };
+    tabPads.onClick = [this] { showTab (Tab::pads); };
+    ctl.changed = [this] { refresh(); };
+    showTab (Tab::session);
+
+    // the engine renders whatever the device asks; no input (no microphone permission on Android)
+    devices.initialiseWithDefaultDevices (0, 2);
+    devices.addAudioCallback (&audio);
+    setSize (1280, 800);
+    startTimerHz (30);
+}
+
+MainComponent::~MainComponent()
+{
+    devices.removeAudioCallback (&audio);
+    setLookAndFeel (nullptr);
+}
+
+void MainComponent::paint (juce::Graphics& g) { g.fillAll (theme::bg); }
+
+void MainComponent::resized()
+{
+    auto r = getLocalBounds().reduced (12, 10);
+    const int g = 8;
+    juce::Rectangle<int> stage;
+    if (getWidth() > getHeight())
+    {
+        // landscape: rail | stage | device
+        const bool big = getWidth() >= 1000;
+        auto left = r.removeFromLeft (big ? 150 : 120);
+        r.removeFromLeft (g);
+        auto right = r.removeFromRight (big ? 300 : 200);
+        r.removeFromRight (g);
+        const int bh = big ? 46 : 40;
+        auto top = left.removeFromTop (bh);
+        playButton.setBounds (top.removeFromLeft (top.getWidth() / 2 - 3)); top.removeFromLeft (6);
+        tapButton.setBounds (top);
+        left.removeFromTop (6);
+        bpm.setBounds (left.removeFromTop (bh));
+        left.removeFromTop (g);
+        rail.setBounds (left);
+        auto perf = right.removeFromTop (bh * 2 + 6);
+        fillButton.setBounds (perf.removeFromLeft (perf.getWidth() / 2 - 3)); perf.removeFromLeft (6);
+        stopClips.setBounds (perf);
+        right.removeFromTop (g);
+        knobs.setBounds (right.removeFromTop (juce::jmin (right.getHeight(), big ? 300 : right.getHeight())));
+        stage = r;
+    }
+    else
+    {
+        // portrait: transport, performance, tracks, tabs, stage, knobs
+        auto top = r.removeFromTop (44);
+        playButton.setBounds (top.removeFromLeft (52)); top.removeFromLeft (6);
+        tapButton.setBounds (top.removeFromRight (64)); top.removeFromRight (6);
+        bpm.setBounds (top);
+        r.removeFromTop (g);
+        auto perf = r.removeFromTop (40);
+        fillButton.setBounds (perf.removeFromLeft (perf.getWidth() / 2 - 3)); perf.removeFromLeft (6);
+        stopClips.setBounds (perf);
+        r.removeFromTop (g);
+        rail.setBounds (r.removeFromTop (50));
+        r.removeFromTop (g);
+        knobs.setBounds (r.removeFromBottom (130));
+        r.removeFromBottom (g);
+        stage = r;
+    }
+    auto tabs = stage.removeFromTop (38);
+    for (auto* b : { &tabSession, &tabGrid, &tabPads }) { b->setBounds (tabs.removeFromLeft (100)); tabs.removeFromLeft (6); }
+    stage.removeFromTop (g);
+    for (auto* c : std::initializer_list<juce::Component*> { &session, &grid, &pads }) c->setBounds (stage);
+    if (sheet) sheet->setBounds (getLocalBounds());
+}
+
+void MainComponent::showTab (Tab t)
+{
+    tab = t;
+    session.setVisible (t == Tab::session);
+    grid.setVisible (t == Tab::grid);
+    pads.setVisible (t == Tab::pads);
+    tabSession.setToggleState (t == Tab::session, juce::dontSendNotification);
+    tabGrid.setToggleState (t == Tab::grid, juce::dontSendNotification);
+    tabPads.setToggleState (t == Tab::pads, juce::dontSendNotification);
+    grid.resized();
+    refresh();
+}
+
+void MainComponent::refresh()
+{
+    playButton.setButtonText (ctl.playing ? "Stop" : "Play");
+    playButton.setToggleState (ctl.playing, juce::dontSendNotification);
+    tabGrid.setButtonText (isDrum (ctl.sel) ? "Grille" : "Notes");
+    session.refresh();
+    grid.resized();
+    for (auto* c : std::initializer_list<juce::Component*> { &rail, &grid, &pads, &knobs, &bpm }) c->repaint();
+    if (sheet) sheet->repaint();
+}
+
+void MainComponent::timerCallback() { ctl.poll(); }
+
+void MainComponent::openSheet (int row, int step)
+{
+    sheet = std::make_unique<StepSheet> (ctl, row, step, [this]
+    {
+        juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
+    });
+    addAndMakeVisible (*sheet);
+    sheet->setBounds (getLocalBounds());
+}
+
+void MainComponent::tap()
+{
+    const double t = juce::Time::getMillisecondCounterHiRes();
+    taps.erase (std::remove_if (taps.begin(), taps.end(), [t] (double x) { return t - x > 2000.0; }), taps.end());
+    taps.push_back (t);
+    if (taps.size() > 1)
+        ctl.setBpm (juce::roundToInt (60000.0 / ((taps.back() - taps.front()) / (double) (taps.size() - 1))));
+}
+} // namespace sloop
