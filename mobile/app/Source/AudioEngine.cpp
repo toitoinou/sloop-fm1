@@ -48,6 +48,10 @@ void AudioEngine::setSound (int track, int engine, int preset)
 {
     Command c; c.type = Type::sound; c.a = track; c.b = engine; c.c = preset; post (std::move (c));
 }
+void AudioEngine::setParams (int track, const std::array<int, kParamSlots>& values)
+{
+    Command c; c.type = Type::params; c.a = track; c.values = values; post (std::move (c));
+}
 void AudioEngine::setKit (int kit) { Command c; c.type = Type::kit; c.a = kit; post (std::move (c)); }
 void AudioEngine::drumHit (int lane, int velocity)
 {
@@ -185,6 +189,11 @@ void AudioEngine::apply (Command& c)
             break;
         case Type::param: se_set_param (engineTrack (c.a), c.b, c.c); break;
         case Type::sound: se_set_sound (engineTrack (c.a), c.b, c.c); publishParams (c.a); break;
+        case Type::params:
+            for (int id = 0; id < se_param_count(); ++id)
+                if (! (isDrum (c.a) && id == SE_P_E0)) se_set_param (engineTrack (c.a), id, c.values[(size_t) id]);
+            publishParams (c.a);
+            break;
         case Type::kit: se_set_kit (c.a); break;
         case Type::hit: se_drum_hit (c.a, c.b); break;
         case Type::note: se_note (engineTrack (c.a), c.b, c.c); break;

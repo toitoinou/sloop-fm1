@@ -21,6 +21,7 @@ public:
     void setFill (bool on);
     void setParam (int track, int param, int value);
     void setSound (int track, int engine, int preset);
+    void setParams (int track, const std::array<int, kParamSlots>& values);   // every parameter at once (a project)
     void setKit (int kit);
     void drumHit (int lane, int velocity);
     void note (int track, int midi, bool on);
@@ -44,7 +45,7 @@ public:
     void audioDeviceStopped() override {}
 
 private:
-    enum class Type : uint8_t { play, bpm, fill, param, sound, kit, hit, note, playlist };
+    enum class Type : uint8_t { play, bpm, fill, param, params, sound, kit, hit, note, playlist };
     struct Command
     {
         Type type;
@@ -53,6 +54,7 @@ private:
         int n = 0;
         int slots[kChainMax] {};
         ClipData clips[kChainMax];
+        std::array<int, kParamSlots> values {};
     };
     void post (Command&& c);
     void apply (Command& c);
@@ -77,7 +79,7 @@ private:
     void writeSteps (int t, int onlyStep, int skipStep);
     bool stepPlays (const TrackState& s, const StepData& x, int lane, int step) const;
 
-    juce::AbstractFifo fifo { 16 };
+    juce::AbstractFifo fifo { 64 };
     std::vector<Command> queue;
     std::array<TrackState, kTracks> tracks;
     bool fill = false;

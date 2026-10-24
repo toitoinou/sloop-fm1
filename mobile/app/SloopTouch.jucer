@@ -20,6 +20,10 @@
       <FILE id="Fi0007" name="AudioEngine.h" compile="0" resource="0" file="Source/AudioEngine.h"/>
       <FILE id="Fi0008" name="AudioEngine.cpp" compile="1" resource="0" file="Source/AudioEngine.cpp"/>
       <FILE id="Fi0013" name="SelfTest.cpp" compile="1" resource="0" file="Source/SelfTest.cpp"/>
+      <FILE id="Fi0014" name="Project.h" compile="0" resource="0" file="Source/Project.h"/>
+      <FILE id="Fi0015" name="Project.cpp" compile="1" resource="0" file="Source/Project.cpp"/>
+      <FILE id="Fi0016" name="ProjectSheet.h" compile="0" resource="0" file="Source/ProjectSheet.h"/>
+      <FILE id="Fi0017" name="ProjectSheet.cpp" compile="1" resource="0" file="Source/ProjectSheet.cpp"/>
       <FILE id="Fi0009" name="Model.h" compile="0" resource="0" file="Source/Model.h"/>
       <FILE id="Fi0010" name="Theme.h" compile="0" resource="0" file="Source/Theme.h"/>
     </GROUP>

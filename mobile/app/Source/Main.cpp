@@ -15,7 +15,7 @@ public:
 
     void initialise (const juce::String& args) override
     {
-        // --snapshot out.png WIDTHxHEIGHT [session|grid|pads|soundN|trackN]: draws the screen into a PNG and quits
+        // --snapshot out.png WIDTHxHEIGHT [session|grid|pads|soundN|trackN|project]: draws the screen into a PNG and quits
         // (to look at the layout without a device, e.g. in CI)
         auto a = juce::StringArray::fromTokens (args, true);
         if (a.contains ("--selftest"))
@@ -41,10 +41,17 @@ public:
         }
         window = std::make_unique<Window> (getApplicationName());
     }
-    void shutdown() override { window = nullptr; }
+    // the session is kept when the app goes to the background (Android may end it there) and when it quits
+    void suspended() override { autosave(); }
+    void shutdown() override { autosave(); window = nullptr; }
     void systemRequestedQuit() override { quit(); }
 
 private:
+    void autosave()
+    {
+        if (window != nullptr)
+            if (auto* ui = dynamic_cast<sloop::MainComponent*> (window->getContentComponent())) ui->autosave();
+    }
     class Window : public juce::DocumentWindow
     {
     public:

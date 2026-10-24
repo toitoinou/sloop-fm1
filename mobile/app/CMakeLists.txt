@@ -57,6 +57,8 @@ target_sources(SloopTouch PRIVATE
     Source/MainComponent.cpp
     Source/Views.cpp
     Source/AudioEngine.cpp
+    Source/Project.cpp
+    Source/ProjectSheet.cpp
     Source/SelfTest.cpp)
 target_compile_definitions(SloopTouch PRIVATE
     JUCE_WEB_BROWSER=0

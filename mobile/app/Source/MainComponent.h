@@ -13,9 +13,11 @@ public:
     ~MainComponent() override;
     void paint (juce::Graphics&) override;
     void resized() override;
+    void autosave();                                 // the session as it is, reopened at the next start
     void showTabNamed (const juce::String& name)
     {
         if (name.startsWith ("sound")) { ctl.select (name.getTrailingIntValue() % kTracks); openSound(); return; }
+        if (name == "project") { openProject(); return; }
         if (name.startsWith ("track")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
         showTab (name == "grid" ? Tab::grid : name == "pads" ? Tab::pads : Tab::session);
     }
@@ -27,6 +29,7 @@ private:
     void refresh();
     void openSheet (int row, int step);
     void openSound();
+    void openProject();
     void showSheet (std::unique_ptr<juce::Component>);
     void tap();
     void setupAudio();
@@ -39,6 +42,7 @@ private:
     Controller ctl { audio };
 
     juce::TextButton playButton { ">" }, recButton { "Rec" }, tapButton { "TAP" }, stopClips { "Stop clips" };
+    juce::TextButton projectButton { "Projet" };
     juce::TextButton audioInfo;                      // the audio device and its buffer; a tap tries the next size
     HoldButton fillButton { "FILL" };
     BpmBox bpm { ctl };
@@ -51,5 +55,7 @@ private:
     std::unique_ptr<juce::Component> sheet;          // the step sheet or the sound sheet
     Tab tab = Tab::session;
     std::vector<double> taps;
+    int ticks = 0;
+    juce::String lastAutosave;
 };
 } // namespace sloop

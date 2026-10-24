@@ -3,6 +3,7 @@
 // parameter lock. It turns the screens' gestures into the audio engine's commands.
 #pragma once
 #include "AudioEngine.h"
+#include "Project.h"
 #include "sloop_engine.h"
 #include <functional>
 
@@ -11,15 +12,23 @@ namespace sloop
 class Controller
 {
 public:
-    explicit Controller (AudioEngine& a) : audio (a), session (demoSession())
+    // restore: reopen the autosave of the last time (else the demo); the self-test starts from the demo
+    explicit Controller (AudioEngine& a, bool restore = true) : audio (a)
     {
         readParams();
-        for (int t = 0; t < kTracks; ++t)
-            if (session.at (t, 0)) { playlist[(size_t) t] = { 0 }; sendPlaylist (t, AudioEngine::When::now); }
+        if (auto saved = restore ? store::read (store::autosaveFile()) : std::nullopt) load (*saved);
+        else
+        {
+            Project demo;
+            demo.name = juce::String::fromUTF8 ("Démo");
+            demo.session = demoSession();
+            load (demo);
+        }
     }
 
     AudioEngine& audio;
     Session session;
+    juce::String projectName;
     int sel = 0;                                         // the selected track
     std::array<int, kTracks> editSlot {};                // the clip each track edits
     int lane = 0;                                        // the drum sound the knobs and pads point at
@@ -66,7 +75,59 @@ public:
         else audio.setSound (t, engine, preset);
         notify();
     }
-    void setMute (int t, bool m) { muted[(size_t) t] = m; audio.setParam (t, kParamMute, m ? 1 : 0); notify(); }
+    void setMute (int t, bool m)
+    {
+        muted[(size_t) t] = m;
+        params[(size_t) t][kParamMute] = m ? 1 : 0;
+        audio.setParam (t, kParamMute, m ? 1 : 0);
+        notify();
+    }
+
+    // ---- projects: what is saved, and loading one (the song stops; each track starts on its first row)
+    Project snapshot() const
+    {
+        Project p;
+        p.name = projectName;
+        p.bpm = bpm;
+        p.session = session;
+        p.sounds = sounds;
+        p.params = params;
+        p.hasParams = true;
+        return p;
+    }
+    void load (const Project& p)
+    {
+        if (playing) togglePlay();
+        session = p.session;
+        if (session.scenes() == 0) session.addScene();
+        projectName = p.name;
+        sel = 0;
+        lane = 0;
+        held.clear();
+        pendingRecord.clear();
+        recording = false;
+        editSlot.fill (0);
+        queued.fill (kNone);
+        page = { { Page::mix, Page::macro, Page::macro, Page::macro } };
+        setBpm (p.bpm);
+        for (int t = 0; t < kTracks; ++t)
+        {
+            const auto snd = p.sounds[(size_t) t];
+            sounds[(size_t) t] = snd;
+            if (isDrum (t)) audio.setKit (snd.preset);
+            else audio.setSound (t, snd.engine, snd.preset);
+            if (p.hasParams)                             // (after the sound: the saved values over the preset's)
+            {
+                params[(size_t) t] = p.params[(size_t) t];
+                audio.setParams (t, p.params[(size_t) t]);
+            }
+            muted[(size_t) t] = p.hasParams && p.params[(size_t) t][kParamMute] != 0;
+            playlist[(size_t) t].clear();
+            if (session.at (t, 0)) playlist[(size_t) t] = { 0 };
+            sendPlaylist (t, AudioEngine::When::now);
+        }
+        notify();
+    }
 
     // ---- session
     void launch (int t, int s)

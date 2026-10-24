@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "MainComponent.h"
+#include "ProjectSheet.h"
 
 namespace sloop
 {
@@ -7,7 +8,7 @@ MainComponent::MainComponent()
 {
     setLookAndFeel (&look);
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &recButton, &tapButton, &stopClips, &fillButton, &bpm,
-                                                             &rail, &tabSession, &tabGrid, &tabPads, &audioInfo, &session,
+                                                             &rail, &tabSession, &tabGrid, &tabPads, &projectButton, &audioInfo, &session,
                                                              &grid, &pads, &knobs })
         addAndMakeVisible (c);
     playButton.onClick = [this] { ctl.togglePlay(); };
@@ -23,6 +24,7 @@ MainComponent::MainComponent()
     tabGrid.onClick = [this] { showTab (Tab::grid); };
     tabPads.onClick = [this] { showTab (Tab::pads); };
     knobs.onSound = [this] { openSound(); };
+    projectButton.onClick = [this] { openProject(); };
     ctl.changed = [this] { refresh(); };
     showTab (Tab::session);
 
@@ -90,9 +92,9 @@ void MainComponent::resized()
         stage = r;
     }
     auto tabs = stage.removeFromTop (38);
-    for (auto* b : { &tabSession, &tabGrid, &tabPads })
+    for (auto* b : { &tabSession, &tabGrid, &tabPads, &projectButton })
     {
-        b->setBounds (tabs.removeFromLeft (juce::jmin (100, (stage.getWidth() - 12) / 4))); tabs.removeFromLeft (6);
+        b->setBounds (tabs.removeFromLeft (juce::jmin (100, (stage.getWidth() - 18) / 5))); tabs.removeFromLeft (6);
     }
     audioInfo.setBounds (tabs);
     stage.removeFromTop (g);
@@ -125,7 +127,18 @@ void MainComponent::refresh()
     if (sheet) sheet->repaint();
 }
 
-void MainComponent::timerCallback() { ctl.poll(); }
+void MainComponent::timerCallback()
+{
+    ctl.poll();
+    if (++ticks % (30 * 30) == 0) autosave();           // every 30 s, besides when the app goes to the background
+}
+
+void MainComponent::autosave()
+{
+    auto json = ctl.snapshot().toJson();
+    if (json == lastAutosave) return;
+    if (store::write (store::autosaveFile(), ctl.snapshot())) lastAutosave = json;
+}
 
 void MainComponent::showSheet (std::unique_ptr<juce::Component> s)
 {
@@ -136,6 +149,13 @@ void MainComponent::showSheet (std::unique_ptr<juce::Component> s)
 void MainComponent::openSheet (int row, int step)
 {
     showSheet (std::make_unique<StepSheet> (ctl, row, step, [this]
+    {
+        juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
+    }));
+}
+void MainComponent::openProject()
+{
+    showSheet (std::make_unique<ProjectSheet> (ctl, [this]
     {
         juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
     }));

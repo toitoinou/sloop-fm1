@@ -52,6 +52,23 @@ L'appli a deux modes en ligne de commande, utilisés par la CI :
 - `--snapshot sortie.png 844x390 [session|grid|pads|soundN|trackN]` : dessine l'écran dans une image, pour
   regarder la disposition sans appareil.
 
+## Les projets
+
+Le bouton **Projet** (à côté des onglets) ouvre le panneau des projets :
+
+- **Enregistrer** garde la session sous le nom tapé, dans la mémoire de l'appli ; la liste montre les projets
+  enregistrés, le plus récent en haut (touche une fois pour choisir, une deuxième fois pour ouvrir ; ✕ deux fois
+  pour supprimer) ;
+- **Nouveau** vide la session (deuxième tap pour confirmer) ;
+- **Exporter…** et **Importer…** passent par le sélecteur de fichiers du système (sur Android : Téléchargements,
+  Drive, une clé USB…) : un projet est un fichier `.sloop`, du JSON lisible ;
+- la session en cours est **gardée toute seule** (quand l'appli passe en arrière-plan, en la quittant, et toutes
+  les 30 secondes) et rouverte au prochain lancement.
+
+Un projet garde la session (clips, scènes, pas, conditions, p-locks), le tempo, le son de chaque piste et tous
+ses paramètres. Les fichiers sont dans `userApplicationDataDirectory/SLOOP Touch/` (le dossier privé de l'appli
+sur Android, `~/.config/SLOOP Touch/` sous Linux).
+
 ## Le son et la latence
 
 L'appli prend la sortie **Oboe** de JUCE (AAudio, ou OpenSL ES sur les vieux téléphones), le chemin à faible
@@ -85,7 +102,8 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [x] Enregistrer en jouant sur les pads (Rec pendant la lecture, au pas le plus proche).
 - [ ] Longueur des clips par piste (8 à 64 pas) pour des boucles décalées.
 - [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
-- [ ] Note repeat, métronome, quantification réglable, sauvegarde des projets.
+- [x] Enregistrer ses sessions : projets dans l'appli, sauvegarde automatique, export / import `.sloop`.
+- [ ] Note repeat, métronome, quantification réglable.
 - [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
 - [ ] Une piste guitare (NAM / TONE3000).
 

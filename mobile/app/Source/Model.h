@@ -125,6 +125,7 @@ struct Session
 
     int scenes() const { return (int) cols[0].size(); }
     std::optional<Clip>& at (int t, int s) { return cols[(size_t) t][(size_t) s]; }
+    const std::optional<Clip>& at (int t, int s) const { return cols[(size_t) t][(size_t) s]; }
     void addScene() { for (auto& c : cols) c.emplace_back(); }
     static Clip newClip (int t, juce::String name)
     {

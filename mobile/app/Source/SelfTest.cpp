@@ -8,7 +8,7 @@ namespace sloop
 int runSelfTest()
 {
     AudioEngine audio;
-    Controller ctl (audio);
+    Controller ctl (audio, false);
     constexpr double rate = 48000.0;
     constexpr int block = 256;
     audio.prepare (rate, block);
@@ -84,6 +84,32 @@ int runSelfTest()
     for (auto& x : rec.lanes[9]) after += x.on;
     check (after == before + 1, "a pad played while recording writes a step");
     ctl.toggleRecord();
+
+    // a project: saved as JSON, read back, loaded
+    {
+        ctl.setBpm (131);
+        auto saved = ctl.snapshot();
+        saved.name = "Test";
+        const auto back = Project::fromJson (saved.toJson());
+        check (back.has_value() && back->bpm == 131 && back->sounds[1].engine == 9 && back->sounds[1].preset == 2
+                   && back->session.scenes() == ctl.session.scenes()
+                   && back->session.at (0, 0)->data.lanes[0][0].on == 1
+                   && back->session.at (1, 0)->data.notes[0].rows == ctl.session.at (1, 0)->data.notes[0].rows
+                   && back->params[1][(size_t) SE_P_E0] == ctl.params[1][(size_t) SE_P_E0]
+                   && back->session.at (1, 0)->data.lock (4, SE_P_E0) == ctl.session.at (1, 0)->data.lock (4, SE_P_E0),
+               "a project survives its file");
+        auto other = *back;
+        other.bpm = 97;
+        other.params[1][(size_t) SE_P_E0] = defs[0].min + 1;
+        const bool wasPlaying = ctl.playing;
+        ctl.load (other);
+        run (0.2);
+        ctl.poll();
+        check (ctl.bpm == 97 && ! ctl.playing && ctl.params[1][(size_t) SE_P_E0] == defs[0].min + 1,
+               "loading a project sets the tempo, the sounds and their parameters");
+        if (wasPlaying) ctl.togglePlay();
+        run (0.5);
+    }
 
     ctl.stopTrack (2);
     run (bar * 1.1);
