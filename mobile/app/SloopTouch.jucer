@@ -24,6 +24,8 @@
       <FILE id="Fi0015" name="Project.cpp" compile="1" resource="0" file="Source/Project.cpp"/>
       <FILE id="Fi0016" name="ProjectSheet.h" compile="0" resource="0" file="Source/ProjectSheet.h"/>
       <FILE id="Fi0017" name="ProjectSheet.cpp" compile="1" resource="0" file="Source/ProjectSheet.cpp"/>
+      <FILE id="Fi0018" name="DawProject.h" compile="0" resource="0" file="Source/DawProject.h"/>
+      <FILE id="Fi0019" name="DawProject.cpp" compile="1" resource="0" file="Source/DawProject.cpp"/>
       <FILE id="Fi0009" name="Model.h" compile="0" resource="0" file="Source/Model.h"/>
       <FILE id="Fi0010" name="Theme.h" compile="0" resource="0" file="Source/Theme.h"/>
     </GROUP>

@@ -5,7 +5,8 @@ namespace sloop
 {
 namespace
 {
-constexpr int kFormat = 1;                      // the file's version: a later app reads older files
+constexpr int kFormat = 2;                      // the file's version: a later app reads older files
+                                                // (2: clips up to 64 steps, 24 rows, the key, the swing)
 
 juce::var stepVar (int a, int b, const StepData& x)
 {
@@ -27,7 +28,7 @@ juce::var clipVar (const Clip& c)
     o->setProperty ("name", c.name);
     o->setProperty ("length", (int) c.data.length);
     juce::Array<juce::var> steps, locks;
-    for (int s = 0; s < kSteps; ++s)
+    for (int s = 0; s < c.data.length; ++s)
     {
         if (c.data.drum)
         {
@@ -36,7 +37,7 @@ juce::var clipVar (const Clip& c)
         }
         else if (c.data.notes[(size_t) s].rows != 0)
         {
-            auto v = stepVar (s, c.data.notes[(size_t) s].rows, c.data.notes[(size_t) s]);
+            auto v = stepVar (s, (int) c.data.notes[(size_t) s].rows, c.data.notes[(size_t) s]);
             juce::Array<juce::var> lens;                  // [row, length] of the notes longer than a step
             for (int r = 0; r < kRows; ++r)
                 if ((c.data.notes[(size_t) s].rows >> r & 1) && c.data.noteLength (s, r) > 1)
@@ -59,13 +60,13 @@ std::optional<Clip> readClip (const juce::var& v, int track)
 {
     if (! v.isObject()) return std::nullopt;
     Clip c = Session::newClip (track, v["name"].toString());
-    c.data.length = (uint8_t) juce::jlimit (1, kSteps, (int) v.getProperty ("length", kSteps));
+    c.data.length = (uint8_t) juce::jlimit (1, kMaxSteps, (int) v.getProperty ("length", kBar));
     if (auto* steps = v["steps"].getArray())
         for (auto& st : *steps)
         {
             if (! st.isArray() || st.size() < 7) continue;     // (a damaged file: what can be read is kept)
             const int s = (int) st[0], b = (int) st[1];
-            if (s < 0 || s >= kSteps) continue;
+            if (s < 0 || s >= c.data.length) continue;
             if (c.data.drum)
             {
                 if (b < 0 || b >= kLanes) continue;
@@ -76,19 +77,19 @@ std::optional<Clip> readClip (const juce::var& v, int track)
             else
             {
                 auto& x = c.data.notes[(size_t) s];
-                x.rows = (uint16_t) (b & 0xFFFF);
+                x.rows = (uint32_t) b & ((1u << kRows) - 1u);
                 x.on = x.rows != 0;
                 readStep (st, x);
                 for (int r = 0; r < kRows; ++r) if (x.rows >> r & 1) c.data.noteLen[(size_t) s][(size_t) r] = 1;
                 if (auto* lens = st.size() > 7 ? st[7].getArray() : nullptr)
                     for (auto& l : *lens)
                         if (l.isArray() && l.size() >= 2 && (int) l[0] >= 0 && (int) l[0] < kRows)
-                            c.data.noteLen[(size_t) s][(size_t) (int) l[0]] = (uint8_t) juce::jlimit (1, kSteps - s, (int) l[1]);
+                            c.data.noteLen[(size_t) s][(size_t) (int) l[0]] = (uint8_t) juce::jlimit (1, kMaxSteps - s, (int) l[1]);
             }
         }
     if (auto* locks = v["locks"].getArray())
         for (auto& l : *locks)
-            if (l.isArray() && l.size() >= 3 && (int) l[0] >= 0 && (int) l[0] < kSteps && (int) l[1] >= 0 && (int) l[1] < kParamSlots)
+            if (l.isArray() && l.size() >= 3 && (int) l[0] >= 0 && (int) l[0] < kMaxSteps && (int) l[1] >= 0 && (int) l[1] < kParamSlots)
                 c.data.setLock ((int) l[0], (int) l[1], (int) l[2]);
     return c;
 }
@@ -101,6 +102,9 @@ juce::String Project::toJson() const
     root->setProperty ("format", kFormat);
     root->setProperty ("name", name);
     root->setProperty ("bpm", bpm);
+    root->setProperty ("swing", swing);
+    root->setProperty ("root", key.root);
+    root->setProperty ("scale", key.scale);
     juce::Array<juce::var> tracks;
     for (int t = 0; t < kTracks; ++t)
     {
@@ -131,6 +135,9 @@ std::optional<Project> Project::fromJson (const juce::String& text)
     Project p;
     p.name = root["name"].toString();
     p.bpm = juce::jlimit (60, 200, (int) root.getProperty ("bpm", 118));
+    p.swing = juce::jlimit (0, 100, (int) root.getProperty ("swing", 0));
+    p.key.root = juce::jlimit (0, 11, (int) root.getProperty ("root", 0));
+    p.key.scale = juce::jlimit (0, (int) scales().size() - 1, (int) root.getProperty ("scale", 0));
     int scenes = 1;
     for (auto& tr : *tracks)
         if (auto* clips = tr["clips"].getArray()) scenes = juce::jmax (scenes, clips->size());
@@ -190,6 +197,23 @@ bool write (const juce::File& f, const Project& p)
 std::optional<Project> read (const juce::File& f)
 {
     return f.existsAsFile() ? Project::fromJson (f.loadFileAsString()) : std::nullopt;
+}
+Prefs readPrefs()
+{
+    const auto v = juce::JSON::parse (folder().getChildFile ("prefs.json").loadFileAsString());
+    Prefs p;
+    p.metronome = v.getProperty ("metronome", p.metronome);
+    p.countIn = v.getProperty ("countIn", p.countIn);
+    p.quantizeRec = v.getProperty ("quantizeRec", p.quantizeRec);
+    return p;
+}
+void writePrefs (const Prefs& p)
+{
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("metronome", p.metronome);
+    o->setProperty ("countIn", p.countIn);
+    o->setProperty ("quantizeRec", p.quantizeRec);
+    folder().getChildFile ("prefs.json").replaceWithText (juce::JSON::toString (juce::var (o)));
 }
 } // namespace store
 } // namespace sloop

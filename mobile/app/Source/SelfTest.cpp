@@ -2,6 +2,7 @@
 // SLOOP Touch --selftest: the audio side without a device (48 kHz, 256-frame blocks, as many phones): the demo
 // session plays, a clip waits for the bar, a chain takes turns, the sound is not silent. Exit code 0 = passed.
 #include "Controller.h"
+#include "DawProject.h"
 #include "sloop_engine.h"
 
 namespace sloop
@@ -32,6 +33,16 @@ int runSelfTest()
         if (! ok) ++failures;
     };
     const double bar = 60.0 / ctl.bpm * 4.0;
+    // runs until a track's clip is at a step (false: not within two bars)
+    auto runTo = [&] (int t, int step)
+    {
+        for (int i = 0; i < (int) (2.0 * bar * rate / block) + 1; ++i)
+        {
+            if (audio.position[t].load() == step) return true;
+            run (block / rate);
+        }
+        return false;
+    };
 
     ctl.togglePlay();
     run (0.5);
@@ -84,8 +95,11 @@ int runSelfTest()
     ctl.setNoteLength (9, 1, 3);
     check (ctl.noteAt (9, 3) == 1 && ctl.noteAt (9, 4) == -1 && ctl.editClip()->data.noteLength (1, 9) == 3,
            "a note stretched over three steps");
-    run (0.1);                                            // (an edit of the clip that plays goes in at once)
-    check ((se_step_flags (0, 2) & 0x78) != 0 && (se_step_flags (0, 3) & 0x78) != 0 && (se_step_flags (0, 1) & 0x78) == 0,
+    // (an edit of the clip that plays goes in at once; the engine has the few steps ahead of the playhead)
+    bool held = runTo (1, 0);
+    const int at = se_position (0);
+    auto flags = [at] (int k) { return se_step_flags (0, (at + k) % kMaxSteps) & 0x78; };
+    check (held && flags (2) != 0 && flags (3) != 0 && flags (1) == 0,
            "its next steps go on from the first (held), not played again");
     ctl.toggleStep (9, 1, false);
     ctl.select (0);
@@ -125,12 +139,117 @@ int runSelfTest()
         check (ctl.bpm == 97 && ! ctl.playing && ctl.params[1][(size_t) SE_P_E0] == defs[0].min + 1,
                "loading a project sets the tempo, the sounds and their parameters");
         if (wasPlaying) ctl.togglePlay();
+        ctl.setBpm (118);                                // (the bars below at the first tempo)
         run (0.5);
     }
 
     ctl.stopTrack (2);
     run (bar * 1.1);
     check (audio.playingSlot[2].load() == -1, "a stopped track stops at the bar");
+
+    // clips of any length: a short one loops on its own steps, a long one launched starts on the bar
+    {
+        ctl.setLength (3, 0, 6);                         // T3: Motif, 6 steps
+        ctl.launch (3, 0);
+        run (bar * 1.05);
+        int most = -1;
+        for (int i = 0; i < 40; ++i) { run (0.05); most = juce::jmax (most, audio.position[3].load()); }
+        check (most == 5, "a 6-step clip loops on its 6 steps");
+        ctl.setLength (3, 0, 32);                        // 2 bars, launched again: from the next bar
+        ctl.doubleClip (3, 1);
+        ctl.launch (3, 0);
+        run (bar);
+        const bool onBar = runTo (3, 16) && audio.position[0].load() % kBar == 0;
+        check (onBar && runTo (3, 31), "a 32-step clip plays its two bars, on the bar");
+        check (ctl.session.at (3, 1)->data.length == 32 && ctl.session.at (3, 1)->data.notes[18].rows == ctl.session.at (3, 1)->data.notes[2].rows,
+               "doubling a clip plays it twice");
+    }
+
+    // undo / redo, copy / paste
+    {
+        ctl.select (0);
+        ctl.editSlot[0] = 0;
+        const bool was = ctl.editClip()->data.lanes[9][3].on != 0;
+        juce::Thread::sleep (450);                       // (a new edit: not merged with the ones before)
+        ctl.toggleStep (9, 3, ! was);
+        ctl.undo();
+        const bool undone = (ctl.editClip()->data.lanes[9][3].on != 0) == was;
+        ctl.redo();
+        check (undone && (ctl.editClip()->data.lanes[9][3].on != 0) != was, "undo and redo a step");
+        const int scenes = ctl.session.scenes();
+        ctl.copyClip (0, 0);
+        ctl.pasteClip (0, scenes - 1);
+        bool same = ctl.session.at (0, scenes - 1).has_value();
+        for (int i = 0; same && i < kMaxSteps; ++i)
+            same = ctl.session.at (0, scenes - 1)->data.lanes[0][(size_t) i].on == ctl.session.at (0, 0)->data.lanes[0][(size_t) i].on;
+        check (same && ! ctl.canPaste (1),
+               "a clip copied and pasted (a drum clip on the drum track only)");
+        juce::Thread::sleep (450);
+        ctl.deleteScene (scenes - 1);
+        ctl.undo();
+        check (ctl.session.scenes() == scenes && ctl.session.at (0, scenes - 1), "undo a deleted scene");
+    }
+
+    // the key: the rows are its degrees
+    {
+        ctl.setKey ({ 2, 1 });                           // D major
+        check (ctl.note (1, 0) == 36 + 2 && ctl.note (1, 2) == 36 + 2 + 4 && ctl.note (1, 7) == 48 + 2, "the piano roll follows the key");
+        ctl.setKey ({});
+    }
+
+    // recording between the steps (quantize off): a nudge
+    {
+        ctl.prefs.quantizeRec = false;
+        ctl.toggleRecord();
+        ctl.select (0);
+        runTo (0, 6);
+        run (0.06);                                      // (a third or so into the step)
+        const int slot = audio.playingSlot[0].load();
+        ctl.recordHit (13, 90);
+        auto& x = ctl.session.at (0, slot)->data.lanes[13];
+        int nudged = 0;
+        for (auto& st : x) if (st.on && st.nudge != 0) ++nudged;
+        check (nudged == 1, "a hit recorded off the grid keeps its place (a nudge)");
+        ctl.toggleRecord();
+        ctl.prefs.quantizeRec = true;
+    }
+
+    // REC from stopped: a bar of clicks, then the song
+    {
+        ctl.togglePlay();
+        run (0.1);
+        ctl.prefs.countIn = true;
+        ctl.toggleRecord();
+        run (0.1);
+        const bool counting = audio.countIn.load() > 0 && ! audio.running.load();
+        run (60.0 / ctl.bpm * 4.0);                      // (the tempo of the project loaded above)
+        check (counting && audio.running.load() && audio.countIn.load() == 0, "a count-in, then the song plays");
+        ctl.toggleRecord();
+    }
+
+    // the DAWproject file: the tracks, the scenes, the notes, in a zip
+    {
+        const auto snap = ctl.snapshot();
+        const auto xml = juce::XmlDocument::parse (dawproject::projectXml (snap));
+        int scenes = 0, notes = 0, tracks = 0;
+        if (xml != nullptr)
+        {
+            if (auto* sc = xml->getChildByName ("Scenes")) scenes = sc->getNumChildElements();
+            if (auto* st = xml->getChildByName ("Structure")) tracks = st->getNumChildElements();
+            std::function<void (const juce::XmlElement&)> count = [&] (const juce::XmlElement& e)
+            {
+                if (e.hasTagName ("Note")) ++notes;
+                for (auto* c : e.getChildIterator()) count (*c);
+            };
+            count (*xml);
+        }
+        const auto data = dawproject::zip (snap);
+        juce::MemoryInputStream in (data, false);
+        juce::ZipFile zip (in);
+        check (xml != nullptr && scenes == snap.session.scenes() && tracks == kTracks + 1 && notes > 100
+                   && zip.getNumEntries() == 2 && zip.getEntry ("project.xml") != nullptr,
+               "a DAWproject export (tracks, scenes, notes)");
+    }
 
     check (std::sqrt (energy / (double) frames) > 0.005, "the engine makes sound");
     ctl.togglePlay();

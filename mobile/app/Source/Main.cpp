@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "MainComponent.h"
+#include "DawProject.h"
 
 #ifndef JUCE_APPLICATION_NAME_STRING                 // the CMake build defines them; the Projucer one (Android) does not
  #define JUCE_APPLICATION_NAME_STRING "SLOOP Touch"
@@ -21,6 +22,17 @@ public:
         if (a.contains ("--selftest"))
         {
             setApplicationReturnValue (sloop::runSelfTest());
+            quit();
+            return;
+        }
+        if (const int i = a.indexOf ("--dawproject"); i >= 0 && i + 1 < a.size())
+        {
+            // --dawproject out.dawproject: the demo session as a DAWproject file (to check it against its schema)
+            sloop::AudioEngine audio;
+            sloop::Controller ctl (audio, false);
+            const auto data = sloop::dawproject::zip (ctl.snapshot());
+            const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (a[i + 1]);
+            setApplicationReturnValue (out.replaceWithData (data.getData(), data.getSize()) ? 0 : 1);
             quit();
             return;
         }

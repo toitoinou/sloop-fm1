@@ -11,7 +11,7 @@ namespace sloop
 class ProjectSheet : public juce::Component
 {
 public:
-    ProjectSheet (Controller& c, std::function<void()> close);
+    ProjectSheet (Controller& c, std::function<void()> close, std::function<void()> settings);
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
@@ -23,15 +23,16 @@ private:
     void save();
     void exportFile();
     void importFile();
+    void exportDaw();
     void say (const juce::String& message) { status = message; repaint(); }
     juce::Rectangle<int> panel() const;
 
     Controller& ctl;
-    std::function<void()> onClose;
+    std::function<void()> onClose, onSettings;
     juce::TextEditor name;
     juce::TextButton saveButton { "Enregistrer" }, newButton { "Nouveau" },
         exportButton { juce::String::fromUTF8 ("Exporter…") }, importButton { juce::String::fromUTF8 ("Importer…") },
-        ok { "OK" };
+        dawButton { juce::String::fromUTF8 ("DAW…") }, settingsButton { juce::String::fromUTF8 ("Réglages") }, ok { "OK" };
     juce::Component listContent;
     juce::Viewport list;
     juce::OwnedArray<juce::TextButton> rows, deletes;

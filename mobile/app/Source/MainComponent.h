@@ -18,6 +18,8 @@ public:
     {
         if (name.startsWith ("sound")) { ctl.select (name.getTrailingIntValue() % kTracks); openSound(); return; }
         if (name == "project") { openProject(); return; }
+        if (name == "settings") { openSettings(); return; }
+        if (name.startsWith ("keys")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
         if (name.startsWith ("notes")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::grid); return; }
         if (name.startsWith ("track")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
         showTab (name == "grid" ? Tab::grid : name == "pads" ? Tab::pads : Tab::session);
@@ -31,11 +33,12 @@ private:
     void openSheet (int row, int step);
     void openSound();
     void openProject();
+    void openSettings();
     void showSheet (std::unique_ptr<juce::Component>);
     void tap();
     void setupAudio();
     void nextBufferSize();
-    void showAudioInfo();
+    juce::String audioText();
 
     theme::LookAndFeel look;
     juce::AudioDeviceManager devices;
@@ -43,8 +46,8 @@ private:
     Controller ctl { audio };
 
     juce::TextButton playButton { ">" }, recButton { "Rec" }, tapButton { "TAP" }, stopClips { "Stop clips" };
-    juce::TextButton projectButton { "Projet" };
-    juce::TextButton audioInfo;                      // the audio device and its buffer; a tap tries the next size
+    juce::TextButton projectButton { "Projet" }, clickButton { "Clic" };
+    IconButton undoButton { IconButton::Icon::undo }, redoButton { IconButton::Icon::redo };
     HoldButton fillButton { "FILL" };
     BpmBox bpm { ctl };
     TrackRail rail { ctl };

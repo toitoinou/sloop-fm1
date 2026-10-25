@@ -8,16 +8,18 @@ MainComponent::MainComponent()
 {
     setLookAndFeel (&look);
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &recButton, &tapButton, &stopClips, &fillButton, &bpm,
-                                                             &rail, &tabSession, &tabGrid, &tabPads, &projectButton, &audioInfo, &session,
+                                                             &rail, &tabSession, &tabGrid, &tabPads, &projectButton, &clickButton, &undoButton,
+                                                             &redoButton, &session,
                                                              &grid, &pads, &knobs })
         addAndMakeVisible (c);
     playButton.onClick = [this] { ctl.togglePlay(); };
     tapButton.onClick = [this] { tap(); };
     recButton.onClick = [this] { ctl.toggleRecord(); };
     recButton.setColour (juce::TextButton::buttonOnColourId, theme::rec);
-    audioInfo.onClick = [this] { nextBufferSize(); };
-    audioInfo.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    audioInfo.setColour (juce::TextButton::textColourOffId, theme::dim);
+    clickButton.onClick = [this] { auto p = ctl.prefs; p.metronome = ! p.metronome; ctl.setPrefs (p); };
+    undoButton.onClick = [this] { ctl.undo(); };
+    redoButton.onClick = [this] { ctl.redo(); };
+    pads.onKey = [this] { openSettings(); };
     stopClips.onClick = [this] { ctl.stopAll(); };
     fillButton.onHold = [this] (bool on) { audio.setFill (on); };
     tabSession.onClick = [this] { showTab (Tab::session); };
@@ -53,6 +55,7 @@ void MainComponent::resized()
     r = r.reduced (phone ? 6 : 12, phone ? 6 : 10);
     const int g = phone ? 6 : 8;
     juce::Rectangle<int> stage;
+    bool undoInRail = false;                          // on a phone: undo / redo by the transport (room for the tabs)
     if (getWidth() > getHeight())
     {
         // landscape: rail | stage | device
@@ -69,6 +72,14 @@ void MainComponent::resized()
         auto second = left.removeFromTop (bh);
         bpm.setBounds (second.removeFromLeft (second.getWidth() / 2 - 3)); second.removeFromLeft (6);
         tapButton.setBounds (second);
+        if (phone)
+        {
+            left.removeFromTop (6);
+            auto third = left.removeFromTop (bh - 4);
+            undoButton.setBounds (third.removeFromLeft (third.getWidth() / 2 - 3)); third.removeFromLeft (6);
+            redoButton.setBounds (third);
+            undoInRail = true;
+        }
         left.removeFromTop (g);
         rail.setBounds (left);
         auto perf = right.removeFromTop (phone ? bh : bh * 2 + 6);
@@ -84,6 +95,9 @@ void MainComponent::resized()
         auto top = r.removeFromTop (44);
         playButton.setBounds (top.removeFromLeft (52)); top.removeFromLeft (6);
         recButton.setBounds (top.removeFromLeft (52)); top.removeFromLeft (6);
+        undoButton.setBounds (top.removeFromLeft (44)); top.removeFromLeft (4);
+        redoButton.setBounds (top.removeFromLeft (44)); top.removeFromLeft (6);
+        undoInRail = true;
         tapButton.setBounds (top.removeFromRight (64)); top.removeFromRight (6);
         bpm.setBounds (top);
         r.removeFromTop (g);
@@ -97,12 +111,20 @@ void MainComponent::resized()
         r.removeFromBottom (g);
         stage = r;
     }
+    // the tabs, then undo, redo, the metronome on the right
     auto tabs = stage.removeFromTop (phone ? 42 : 38);
+    const int iw = phone ? 44 : 48;
+    clickButton.setBounds (tabs.removeFromRight (iw + 8)); tabs.removeFromRight (8);
+    if (! undoInRail)
+    {
+        redoButton.setBounds (tabs.removeFromRight (iw)); tabs.removeFromRight (4);
+        undoButton.setBounds (tabs.removeFromRight (iw)); tabs.removeFromRight (8);
+    }
+    const int tw = juce::jmin (100, (tabs.getWidth() - 18) / 4);
     for (auto* b : { &tabSession, &tabGrid, &tabPads, &projectButton })
     {
-        b->setBounds (tabs.removeFromLeft (juce::jmin (100, (stage.getWidth() - 18) / 5))); tabs.removeFromLeft (6);
+        b->setBounds (tabs.removeFromLeft (tw)); tabs.removeFromLeft (6);
     }
-    audioInfo.setBounds (tabs);
     stage.removeFromTop (g);
     for (auto* c : std::initializer_list<juce::Component*> { &session, &grid, &pads }) c->setBounds (stage);
     if (sheet) sheet->setBounds (getLocalBounds());
@@ -126,6 +148,9 @@ void MainComponent::refresh()
     playButton.setButtonText (ctl.playing ? "Stop" : "Play");
     playButton.setToggleState (ctl.playing, juce::dontSendNotification);
     recButton.setToggleState (ctl.recording, juce::dontSendNotification);
+    clickButton.setToggleState (ctl.prefs.metronome, juce::dontSendNotification);
+    undoButton.setEnabled (ctl.canUndo());
+    redoButton.setEnabled (ctl.canRedo());
     tabGrid.setButtonText (isDrum (ctl.sel) ? "Grille" : "Notes");
     session.refresh();
     grid.resized();
@@ -164,7 +189,14 @@ void MainComponent::openProject()
     showSheet (std::make_unique<ProjectSheet> (ctl, [this]
     {
         juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
-    }));
+    }, [this] { juce::MessageManager::callAsync ([this] { openSettings(); }); }));
+}
+void MainComponent::openSettings()
+{
+    showSheet (std::make_unique<SettingsSheet> (ctl, [this]
+    {
+        juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
+    }, [this] { return audioText(); }, [this] { nextBufferSize(); }));
 }
 void MainComponent::openSound()
 {
@@ -174,8 +206,8 @@ void MainComponent::openSound()
     }));
 }
 
-// the low-latency path: Oboe (AAudio, or OpenSL ES on old phones) and a small buffer; the buffer is shown on screen
-// and a tap on it tries the next size, to find the smallest one that does not crackle on this phone
+// the low-latency path: Oboe (AAudio, or OpenSL ES on old phones) and a small buffer; the settings show the buffer
+// and a tap there tries the next size, to find the smallest one that does not crackle on this phone
 void MainComponent::setupAudio()
 {
     devices.initialiseWithDefaultDevices (0, 2);     // no input: no microphone permission on Android
@@ -194,7 +226,6 @@ void MainComponent::setupAudio()
         setup.bufferSize = best;
         devices.setAudioDeviceSetup (setup, true);
     }
-    showAudioInfo();
 }
 
 void MainComponent::nextBufferSize()
@@ -210,19 +241,19 @@ void MainComponent::nextBufferSize()
     auto setup = devices.getAudioDeviceSetup();
     setup.bufferSize = next;
     devices.setAudioDeviceSetup (setup, true);
-    showAudioInfo();
 }
 
-void MainComponent::showAudioInfo()
+// the audio device and its buffer (the settings: a tap tries the next size, to find the smallest one that does
+// not crackle on this phone)
+juce::String MainComponent::audioText()
 {
     auto* dev = devices.getCurrentAudioDevice();
-    if (dev == nullptr) { audioInfo.setButtonText ("pas d'audio"); return; }
+    if (dev == nullptr) return "Pas d'audio";
     const double rate = dev->getCurrentSampleRate();
     const int buffer = dev->getCurrentBufferSizeSamples(), extra = dev->getOutputLatencyInSamples();
     const double ms = rate > 0 ? (buffer + extra) * 1000.0 / rate : 0.0;
-    audioInfo.setButtonText (devices.getCurrentAudioDeviceType() + juce::String::fromUTF8 (" · ") + juce::String (buffer)
-                             + juce::String::fromUTF8 (" · ≈ ") + juce::String (ms, 1) + " ms");
-    audioInfo.setTooltip (juce::String (rate / 1000.0, 1) + " kHz");
+    return devices.getCurrentAudioDeviceType() + juce::String::fromUTF8 (" · buffer ") + juce::String (buffer)
+           + juce::String::fromUTF8 (" · ≈ ") + juce::String (ms, 1) + " ms";
 }
 
 void MainComponent::tap()

@@ -2,6 +2,10 @@
 // The audio side: SLOOP's engine (mobile/engine) driven from the audio callback. The UI never touches the engine:
 // it posts commands (a lock-free queue), the audio thread applies them between two engine blocks and publishes
 // what plays in atomics the UI reads on a timer.
+//
+// The engine plays each track over its 64 steps in a loop; the app writes them just ahead of the playhead (a few
+// steps), from whatever clip is due there. So a clip can have any length (1..64), a chain can mix lengths, a clip
+// launched while playing starts on the next bar, and an edit is heard at once.
 #pragma once
 #include "Model.h"
 #include <atomic>
@@ -16,8 +20,11 @@ public:
     AudioEngine();
 
     // ---- from the message thread
-    void play (bool on);
+    void play (bool on, bool countIn = false);          // countIn: one bar of clicks first
     void setBpm (int bpm);
+    void setSwing (int amount);                         // 0..100 (se_set_swing)
+    void setMetronome (bool on);
+    void setKey (const Key&);
     void setFill (bool on);
     void setParam (int track, int param, int value);
     void setSound (int track, int engine, int preset);
@@ -25,13 +32,16 @@ public:
     void setKit (int kit);
     void drumHit (int lane, int velocity);
     void note (int track, int midi, bool on);
-    // what a track plays: a chain of clips (one = a single clip, none = the track stops), from `when`
+    // what a track plays: a chain of clips (one = a single clip, none = the track stops), from `when`; update:
+    // new data for the clips of these rows, wherever they are (playing, or waiting for the bar)
     void setPlaylist (int track, When when, const std::vector<std::pair<int, const ClipData*>>& clips);
+    void renumber (int from, int delta);               // the session's rows from `from` on moved by delta
 
     // ---- read by the UI
     std::atomic<int> playingSlot[kTracks];   // the session row each track plays, -1 none
-    std::atomic<int> position[kTracks];      // its step, -1 stopped
+    std::atomic<int> position[kTracks];      // its step in its clip, -1 stopped
     std::atomic<bool> running { false };
+    std::atomic<int> countIn { 0 };          // the count-in's beats still to click (0: none)
     std::atomic<int> hits[kTracks];          // counts up when a track plays a step (the rail's LEDs)
     std::atomic<int> paramValue[kTracks][kParamSlots];   // every SLOOP parameter as the engine has it (a new sound
     std::atomic<int> paramSerial { 0 };                  // sets them all): counts up when they change
@@ -45,7 +55,7 @@ public:
     void audioDeviceStopped() override {}
 
 private:
-    enum class Type : uint8_t { play, bpm, fill, param, params, sound, kit, hit, note, playlist };
+    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber };
     struct Command
     {
         Type type;
@@ -61,29 +71,38 @@ private:
 
     struct TrackState
     {
-        int n = 0, idx = 0;                  // the playlist and where it is
+        int n = 0, idx = 0;                  // the playlist and the clip playing in it
         int slots[kChainMax] {};
         ClipData clips[kChainMax];
-        bool pending = false;                // a playlist waiting for the next bar
+        bool pending = false;                // a playlist waiting for the bar at pendingAt
+        int64_t pendingAt = 0;
         Command next;
-        int loops = 0;                       // times the clip has looped (1:2, 1:4 conditions)
-        uint32_t seed = 1;                   // this loop's dice (probabilities)
-        int lastPos = -1;
-        bool lastStepPending = false;        // the next loop is written except the step playing now
-        int reportSlot = -1;
+        int64_t start = 0;                   // the step (since PLAY) where the clip playing began this pass
+        int passes = 0;                      // the passes of that clip in a row so far (1:2, 1:4 conditions)
+        int64_t cur = -1;                    // the step playing, since PLAY (-1: none yet)
+        int64_t written = -1;                // the engine has the steps up to there
+        int lastPos = -1;                    // the engine's step (0..63) last seen
+        uint32_t seed = 1;                   // the dice of the passes (probabilities): one roll a pass
     };
+    struct Where { int idx = -1; int64_t start = 0; int passes = 0; bool fromNext = false; };
+    Where locate (const TrackState&, int64_t step) const;      // the clip due at a step, and its pass
+    void commit (int t, int64_t step);                          // the playhead is there: what plays now
+    void writeStep (int t, int64_t step);
+    void rewrite (int t);                                       // the steps ahead again (an edit, a launch)
     void renderEngineBlock();
     void publishParams (int track);
     void startTransport();
-    void prepareNextLoop (int t);
-    void writeSteps (int t, int onlyStep, int skipStep);
-    bool stepPlays (const TrackState& s, const StepData& x, int lane, int step) const;
+    void stopTransport();
+    bool stepPlays (uint32_t seed, int passes, const StepData& x, int lane, int step) const;
 
-    juce::AbstractFifo fifo { 64 };
+    juce::AbstractFifo fifo { 32 };
     std::vector<Command> queue;
     std::array<TrackState, kTracks> tracks;
     bool fill = false;
     int tempo = 118;
+    Key key;
+    bool countingIn = false;
+    double countFrames = 0;
     std::array<int, kTracks> framesInStep {};
     uint32_t rng = 0x12345678u;
 

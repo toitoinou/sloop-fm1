@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "ProjectSheet.h"
+#include "DawProject.h"
 
 namespace sloop
 {
@@ -8,7 +9,8 @@ namespace
 juce::String u8 (const char* s) { return juce::String::fromUTF8 (s); }
 }
 
-ProjectSheet::ProjectSheet (Controller& c, std::function<void()> close) : ctl (c), onClose (std::move (close))
+ProjectSheet::ProjectSheet (Controller& c, std::function<void()> close, std::function<void()> settings)
+    : ctl (c), onClose (std::move (close)), onSettings (std::move (settings))
 {
     name.setText (ctl.projectName, false);
     name.setFont (theme::font (16.0f));
@@ -20,7 +22,7 @@ ProjectSheet::ProjectSheet (Controller& c, std::function<void()> close) : ctl (c
     list.setViewedComponent (&listContent, false);
     list.setScrollBarsShown (false, false, true, false);
     list.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
-    for (auto* b : { &saveButton, &newButton, &exportButton, &importButton, &ok }) addAndMakeVisible (b);
+    for (auto* b : { &saveButton, &newButton, &exportButton, &importButton, &dawButton, &settingsButton, &ok }) addAndMakeVisible (b);
     addAndMakeVisible (name);
     addAndMakeVisible (list);
     saveButton.onClick = [this] { save(); };
@@ -35,6 +37,8 @@ ProjectSheet::ProjectSheet (Controller& c, std::function<void()> close) : ctl (c
     };
     exportButton.onClick = [this] { exportFile(); };
     importButton.onClick = [this] { importFile(); };
+    dawButton.onClick = [this] { exportDaw(); };
+    settingsButton.onClick = [this] { onSettings(); };
     ok.onClick = [this] { onClose(); };
     ok.setToggleState (true, juce::dontSendNotification);
     rebuildList();
@@ -131,6 +135,30 @@ void ProjectSheet::exportFile()
                           });
 }
 
+// for a DAW: Bitwig Studio, Studio One, Cubase... open it (the scenes in the clip launcher, and in the arrangement)
+void ProjectSheet::exportDaw()
+{
+    const auto n = ctl.projectName.isNotEmpty() ? ctl.projectName : u8 ("Sans titre");
+    const auto start = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                           .getChildFile (juce::File::createLegalFileName (n) + ".dawproject");
+    chooser = std::make_unique<juce::FileChooser> (u8 ("Exporter pour un DAW"), start, "*.dawproject");
+    const auto data = dawproject::zip (ctl.snapshot());
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this, data] (const juce::FileChooser& fc)
+                          {
+                              const auto url = fc.getURLResult();
+                              if (url.isEmpty()) return;
+                              bool done = false;
+                              if (url.isLocalFile())
+                                  done = url.getLocalFile().replaceWithData (data.getData(), data.getSize());
+                              else if (auto out = url.createOutputStream())
+                                  done = out->write (data.getData(), data.getSize());
+                              say (done ? u8 ("Exporté en DAWproject : à ouvrir dans Bitwig, Studio One, Cubase...")
+                                        : u8 ("L'export a échoué."));
+                          });
+}
+
 void ProjectSheet::importFile()
 {
     chooser = std::make_unique<juce::FileChooser> (u8 ("Importer un projet"),
@@ -171,12 +199,13 @@ void ProjectSheet::resized()
     name.setBounds (top);
     p.removeFromTop (8);
     auto bottom = p.removeFromBottom (44);
-    ok.setBounds (bottom.removeFromRight (80));
-    bottom.removeFromRight (8);
-    const int w = juce::jmin (130, (bottom.getWidth() - 16) / 3);
-    newButton.setBounds (bottom.removeFromLeft (w)); bottom.removeFromLeft (8);
-    exportButton.setBounds (bottom.removeFromLeft (w)); bottom.removeFromLeft (8);
-    importButton.setBounds (bottom.removeFromLeft (w));
+    ok.setBounds (bottom.removeFromRight (70));
+    bottom.removeFromRight (6);
+    const int w = juce::jmin (130, (bottom.getWidth() - 4 * 6) / 5);
+    for (auto* b : { &newButton, &exportButton, &importButton, &dawButton, &settingsButton })
+    {
+        b->setBounds (bottom.removeFromLeft (w)); bottom.removeFromLeft (6);
+    }
     p.removeFromBottom (30);                             // the status line
     list.setBounds (p);
     const int rh = 44;

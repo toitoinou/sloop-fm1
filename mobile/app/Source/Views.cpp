@@ -164,18 +164,26 @@ void SessionGrid::paint (juce::Graphics& g)
             g.drawText (clip->name, inner.removeFromTop (16.0f), juce::Justification::topLeft, true);
             // the clip's steps, small
             auto strip = inner.removeFromBottom (9.0f);
-            const float w = strip.getWidth() / kSteps;
-            for (int s = 0; s < kSteps; ++s)
+            const int len = clip->data.length;
+            const float w = strip.getWidth() / (float) len;
+            for (int s = 0; s < len; ++s)
             {
                 const bool on = clip->data.columnActive (s);
                 g.setColour (on ? (playing ? theme::ink : col) : (playing ? theme::ink : theme::fg).withAlpha (0.14f));
-                g.fillRect (strip.getX() + (float) s * w, strip.getY(), w - 1.0f, strip.getHeight());
+                g.fillRect (strip.getX() + (float) s * w, strip.getY(), juce::jmax (1.0f, w - (len > 32 ? 0.0f : 1.0f)), strip.getHeight());
+            }
+            if (len != kBar)
+            {
+                g.setColour ((playing ? theme::ink : theme::dim));
+                g.setFont (font (10.0f));
+                g.drawText (juce::String (len), box.reduced (6.0f, 5.0f).removeFromBottom (24.0f).removeFromTop (12.0f),
+                            juce::Justification::topRight);
             }
             if (playing && ctl.playing)
             {
                 const int pos = ctl.audio.position[t].load();
                 g.setColour (theme::ink.withAlpha (0.8f));
-                g.fillRect (box.getX(), box.getBottom() - 3.0f, box.getWidth() * (float) (pos + 1) / kSteps, 3.0f);
+                g.fillRect (box.getX(), box.getBottom() - 3.0f, box.getWidth() * (float) (pos + 1) / (float) len, 3.0f);
             }
             // its place in a chain
             const std::vector<int>& list = press.chained && press.t == t ? press.list : ctl.playlist[(size_t) t];
@@ -220,7 +228,7 @@ void SessionGrid::timerCallback()
     {
         press.done = true;
         if (press.scene >= 0) sceneMenu (press.scene);
-        else if (press.t >= 0 && ctl.session.at (press.t, press.s)) clipMenu (press.t, press.s);
+        else if (press.t >= 0 && (ctl.session.at (press.t, press.s) || ctl.canPaste (press.t))) clipMenu (press.t, press.s);
     }
     repaint();
 }
@@ -274,10 +282,21 @@ void SessionGrid::mouseUp (const juce::MouseEvent& e)
 void SessionGrid::clipMenu (int t, int s)
 {
     juce::PopupMenu m;
-    m.addSectionHeader (ctl.session.at (t, s)->name);
-    m.addItem (1, juce::String::fromUTF8 ("Éditer"));
-    m.addItem (2, "Dupliquer dessous");
-    m.addItem (3, "Effacer");
+    const auto& clip = ctl.session.at (t, s);
+    if (clip)
+    {
+        m.addSectionHeader (clip->name);
+        m.addItem (1, juce::String::fromUTF8 ("Éditer"));
+        m.addItem (4, "Copier");
+    }
+    if (ctl.canPaste (t)) m.addItem (5, clip ? juce::String::fromUTF8 ("Coller (remplace)") : juce::String ("Coller ici"));
+    if (clip)
+    {
+        m.addItem (2, "Dupliquer dessous");
+        m.addItem (6, juce::String::fromUTF8 ("Doubler la longueur"), clip->data.length * 2 <= kMaxSteps);
+        m.addItem (7, "Quantifier");
+        m.addItem (3, "Effacer");
+    }
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (
                          localAreaToGlobal (cellRect (t, s))),
                      [this, t, s] (int r)
@@ -285,6 +304,10 @@ void SessionGrid::clipMenu (int t, int s)
                          if (r == 1) onEdit (t, s);
                          if (r == 2) ctl.duplicateClip (t, s);
                          if (r == 3) ctl.deleteClip (t, s);
+                         if (r == 4) ctl.copyClip (t, s);
+                         if (r == 5) ctl.pasteClip (t, s);
+                         if (r == 6) ctl.doubleClip (t, s);
+                         if (r == 7) ctl.quantizeClip (t, s);
                      });
 }
 
@@ -350,40 +373,89 @@ void SessionView::mouseUp (const juce::MouseEvent& e)
 // =================================================================== the step grid / piano roll
 StepGrid::StepGrid (Controller& c, std::function<void (int, int)> sheet) : ctl (c), onSheet (std::move (sheet))
 {
-    for (auto* b : { &lanes1, &lanes2, &steps1, &steps2 })
+    for (auto* b : { &lanes1, &lanes2, &steps1, &steps2, &lengthButton })
     {
         addAndMakeVisible (b);
         b->setClickingTogglesState (false);
     }
-    lanes1.onClick = [this] { lanePage = 0; repaint(); resized(); };
-    lanes2.onClick = [this] { lanePage = 1; repaint(); resized(); };
-    steps1.onClick = [this] { stepPage = 0; repaint(); resized(); };
-    steps2.onClick = [this] { stepPage = 1; repaint(); resized(); };
+    // the drums: lanes 1-8 / 9-16; the piano roll: its window of rows down / up an octave of the scale
+    lanes1.onClick = [this]
+    {
+        if (isDrum (ctl.sel)) lanePage = 0;
+        else rowBase = juce::jmax (0, rowBase - ctl.key.def().size);
+        repaint(); resized();
+    };
+    lanes2.onClick = [this]
+    {
+        if (isDrum (ctl.sel)) lanePage = 1;
+        else rowBase = juce::jmin (kRows - shownRows(), rowBase + ctl.key.def().size);
+        repaint(); resized();
+    };
+    steps1.onClick = [this] { stepPage = juce::jmax (0, juce::jmin (stepPage, stepPages() - 1) - 1); repaint(); resized(); };
+    steps2.onClick = [this] { stepPage = juce::jmin (stepPages() - 1, stepPage + 1); repaint(); resized(); };
+    lengthButton.onClick = [this] { lengthMenu(); };
     startTimerHz (30);
+}
+int StepGrid::length() const
+{
+    auto* c = const_cast<Controller&> (ctl).editClip();
+    return c != nullptr ? (int) c->data.length : kBar;
 }
 void StepGrid::resized()
 {
     auto head = getLocalBounds().removeFromTop (headH);
     const bool drum = isDrum (ctl.sel);
-    if (narrow())
+    const bool paged = stepPages() > 1;
+    if (paged)
     {
-        steps2.setBounds (head.removeFromRight (52)); head.removeFromRight (4);
-        steps1.setBounds (head.removeFromRight (70)); head.removeFromRight (8);
+        steps2.setBounds (head.removeFromRight (40)); head.removeFromRight (4);
+        steps1.setBounds (head.removeFromRight (40)); head.removeFromRight (8);
     }
-    steps1.setVisible (narrow()); steps2.setVisible (narrow());
-    lanes2.setBounds (head.removeFromRight (52)); head.removeFromRight (4);
-    lanes1.setBounds (head.removeFromRight (80));
-    lanes1.setVisible (drum); lanes2.setVisible (drum);
-    lanes1.setToggleState (lanePage == 0, juce::dontSendNotification);
-    lanes2.setToggleState (lanePage == 1, juce::dontSendNotification);
-    steps1.setToggleState (stepPage == 0, juce::dontSendNotification);
-    steps2.setToggleState (stepPage == 1, juce::dontSendNotification);
+    steps1.setVisible (paged); steps2.setVisible (paged);
+    steps1.setEnabled (firstStep() > 0);
+    steps2.setEnabled (firstStep() + visibleSteps() < length());
+    lanes2.setBounds (head.removeFromRight (drum ? 52 : 40)); head.removeFromRight (4);
+    lanes1.setBounds (head.removeFromRight (drum ? 80 : 40)); head.removeFromRight (8);
+    lanes1.setButtonText (drum ? "Sons 1-8" : "v");
+    lanes2.setButtonText (drum ? "9-16" : "^");
+    lanes1.setToggleState (drum && lanePage == 0, juce::dontSendNotification);
+    lanes2.setToggleState (drum && lanePage == 1, juce::dontSendNotification);
+    if (! drum) { lanes1.setEnabled (rowBase > 0); lanes2.setEnabled (rowBase + shownRows() < kRows); }
+    else { lanes1.setEnabled (true); lanes2.setEnabled (true); }
+    lengthButton.setButtonText (juce::String (length()) + " pas");
+    lengthButton.setBounds (head.removeFromRight (narrow() ? 70 : 84));
+    lengthButton.setVisible (ctl.editClip() != nullptr);
+}
+void StepGrid::lengthMenu()
+{
+    if (ctl.editClip() == nullptr) return;
+    juce::PopupMenu m;
+    m.addSectionHeader ("Longueur du clip");
+    for (int len : { 4, 8, 12, 16, 24, 32, 48, 64 })
+        m.addItem (len, juce::String (len) + " pas" + (len % kBar == 0 ? "  (" + juce::String (len / kBar) + " mes.)" : juce::String()),
+                   true, len == length());
+    m.addSeparator();
+    m.addItem (1000, juce::String::fromUTF8 ("Doubler (le clip joué deux fois)"), length() * 2 <= kMaxSteps);
+    m.addItem (1001, "Quantifier");
+    const int t = ctl.sel, slot = ctl.editSlot[(size_t) t];
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&lengthButton),
+                     [this, t, slot] (int r)
+                     {
+                         if (r >= 1 && r <= kMaxSteps) ctl.setLength (t, slot, r);
+                         if (r == 1000) ctl.doubleClip (t, slot);
+                         if (r == 1001) ctl.quantizeClip (t, slot);
+                         if (r > 0) { stepPage = juce::jmin (stepPage, stepPages() - 1); resized(); repaint(); }
+                     });
 }
 std::vector<int> StepGrid::rows() const
 {
     std::vector<int> r;
     if (isDrum (ctl.sel)) for (int i = 0; i < 8; ++i) r.push_back (lanePage * 8 + i);
-    else for (int i = kRows - 1; i >= 0; --i) r.push_back (i);
+    else
+    {
+        const int base = juce::jlimit (0, kRows - shownRows(), rowBase);
+        for (int i = shownRows() - 1; i >= 0; --i) r.push_back (base + i);
+    }
     return r;
 }
 bool StepGrid::cellAt (juce::Point<int> p, int& row, int& step) const
@@ -396,13 +468,13 @@ bool StepGrid::cellAt (juce::Point<int> p, int& row, int& step) const
     if (ci < 0 || ci >= visibleSteps() || ri < 0 || ri >= (int) rs.size()) return false;
     row = rs[(size_t) ri];
     step = firstStep() + ci;
-    return true;
+    return step < length();
 }
 int StepGrid::columnAt (int x) const
 {
     auto a = gridArea();
     const float cw = (float) (a.getWidth() - labelW()) / (float) visibleSteps();
-    return firstStep() + juce::jlimit (0, visibleSteps() - 1, (int) std::floor ((float) (x - a.getX() - labelW()) / cw));
+    return juce::jmin (length() - 1, firstStep() + juce::jlimit (0, visibleSteps() - 1, (int) std::floor ((float) (x - a.getX() - labelW()) / cw)));
 }
 int StepGrid::labelAt (juce::Point<int> p) const
 {
@@ -415,7 +487,7 @@ int StepGrid::labelAt (juce::Point<int> p) const
 void StepGrid::preview (int row)
 {
     if (isDrum (ctl.sel)) { ctl.audio.drumHit (row, 100); return; }
-    const int t = ctl.sel, note = rowNote (t, row);
+    const int t = ctl.sel, note = ctl.note (t, row);
     ctl.audio.note (t, note, true);
     juce::Timer::callAfterDelay (220, [a = &ctl.audio, t, note] { a->note (t, note, false); });
 }
@@ -425,9 +497,12 @@ void StepGrid::paint (juce::Graphics& g)
     auto head = getLocalBounds().removeFromTop (headH);
     g.setColour (theme::dim);
     g.setFont (font (13.0f));
-    g.drawText (juce::String (kTrackIds[ctl.sel]) + juce::String::fromUTF8 (" · ") + (clip ? clip->name : juce::String ("case vide"))
-                    + (clip && ctl.editingPlaying() ? "  >" : ""),
-                head, juce::Justification::centredLeft, true);
+    juce::String title = juce::String (kTrackIds[ctl.sel]) + juce::String::fromUTF8 (" · ") + (clip ? clip->name : juce::String ("case vide"))
+                         + (clip && ctl.editingPlaying() ? "  >" : "");
+    if (clip && stepPages() > 1)
+        title << "  " << (firstStep() + 1) << "-" << juce::jmin (length(), firstStep() + visibleSteps());
+    const int right = (lengthButton.isVisible() ? lengthButton : lanes1.isVisible() ? lanes1 : steps1).getX() - 6;
+    g.drawText (title, head.withRight (juce::jmax (head.getX(), right)), juce::Justification::centredLeft, true);
     auto a = gridArea();
     if (clip == nullptr)
     {
@@ -448,19 +523,22 @@ void StepGrid::paint (juce::Graphics& g)
         g.setColour (selLane ? theme::cellBeat : theme::panel);
         g.fillRoundedRectangle (lab, theme::radius);
         if (selLane) { g.setColour (col); g.fillRect (lab.withWidth (3.0f)); }
-        g.setColour (selLane ? col : (! d.drum && row % 7 == 0 ? theme::fg : theme::dim));
+        g.setColour (selLane ? col : (! d.drum && ctl.key.isRoot (row) ? theme::fg : theme::dim));
         g.setFont (font (d.drum ? 13.0f : 11.5f, d.drum));
-        g.drawText (d.drum ? juce::String (kLaneNames[row]) : noteName (rowNote (ctl.sel, row)),
+        g.drawText (d.drum ? juce::String (kLaneNames[row]) : noteName (ctl.note (ctl.sel, row)),
                     lab.reduced (8.0f, 0.0f), juce::Justification::centredLeft, true);
         for (int v = 0; v < visibleSteps(); ++v)
         {
             const int s = firstStep() + v;
             auto r = juce::Rectangle<float> ((float) (a.getX() + labelW()) + (float) v * cw, (float) a.getY() + (float) i * rh, cw - (float) theme::gap, rh - (float) theme::gap);
+            if (s >= d.length) { g.setColour (theme::panel.withAlpha (0.5f)); g.fillRoundedRectangle (r, 2.0f); continue; }
             // a synth note held over several steps is drawn as one bar: its first step carries the marks
             const int start = d.drum ? (d.stepOn (row, s) ? s : -1) : d.noteStart (row, s);
             const auto& x = d.drum ? d.lanes[(size_t) row][(size_t) s] : d.notes[(size_t) juce::jmax (0, start)];
             const bool on = start >= 0, first = start == s;
-            g.setColour (on ? mixed (col, 0.35f + 0.65f * x.vel / 127.0f) : (s % 4 == 0 ? theme::cellBeat : theme::cell));
+            const juce::Colour beat = s % 4 == 0 ? theme::cellBeat : theme::cell;
+            const juce::Colour empty = ! d.drum && ctl.key.isRoot (row) ? beat.interpolatedWith (col, 0.1f) : beat;
+            g.setColour (on ? mixed (col, 0.35f + 0.65f * x.vel / 127.0f) : empty);
             g.fillRoundedRectangle (r, 2.0f);
             if (on && ! first && v > 0) g.fillRect (r.withX (r.getX() - (float) theme::gap - 2.0f).withWidth ((float) theme::gap + 4.0f));
             if (on && ! first && v == 0) { g.setColour (theme::ink.withAlpha (0.5f)); g.drawText ("<", r, juce::Justification::centredLeft); }
@@ -555,6 +633,7 @@ void StepGrid::mouseDrag (const juce::MouseEvent& e)
     if (p.mode == Pointer::velocity)
         if (auto* x = ctl.step (p.row, p.step))
         {
+            ctl.remember ("velocity");
             x->vel = (uint8_t) juce::jlimit (10, 127, p.vel0 - d.y * 127 / 150);
             ctl.stepChanged();
         }
@@ -582,81 +661,156 @@ void StepGrid::mouseUp (const juce::MouseEvent& e)
 }
 
 // =================================================================== pads
-juce::Rectangle<int> PadsView::padsArea() const
+juce::Rectangle<int> PadsView::headButton (int i) const
 {
-    // the whole stage: a wide pad is an easier target than a square one
-    return isDrum (ctl.sel) ? getLocalBounds().withTrimmedTop (36) : getLocalBounds();
-}
-juce::Rectangle<int> PadsView::layoutRect (int i) const
-{
-    return { i * 76, 0, 72, 30 };
+    if (isDrum (ctl.sel)) return { i * 76, 0, 72, 30 };
+    if (i < 2) return { i * 56, 0, 52, 30 };          // Oct -, Oct +
+    if (i == 2) return { 120, 0, 84, 30 };            // Accords
+    return { 212, 0, juce::jmin (150, getWidth() - 212), 30 };   // the key
 }
 int PadsView::padAt (juce::Point<int> p) const
 {
     auto a = padsArea();
     if (! a.contains (p)) return -1;
-    const int c = (p.x - a.getX()) * 4 / a.getWidth(), r = (p.y - a.getY()) * 4 / a.getHeight();
-    return juce::jlimit (0, 15, r * 4 + c);
+    const int c = (p.x - a.getX()) * cols() / a.getWidth(), r = (p.y - a.getY()) * 4 / a.getHeight();
+    return juce::jlimit (0, cols() * 4 - 1, r * cols() + c);
+}
+int PadsView::padRow (int pad) const
+{
+    // from the bottom left: a column up the scale, a row up a fourth (three degrees of a 7-note scale)
+    const int size = ctl.key.def().size, rowStep = (size * 3 + 3) / 7;
+    const int col = pad % cols(), row = 3 - pad / cols();
+    const int degree = octave * size + col + row * rowStep;
+    return degree < kRows ? degree : -1;
+}
+std::vector<int> PadsView::padRows (int pad) const
+{
+    const int r = padRow (pad);
+    if (r < 0) return {};
+    std::vector<int> rows { r };
+    if (chords)                                       // the scale's triad on it: degrees +2 and +4
+        for (int k : { 2, 4 }) if (r + k < kRows) rows.push_back (r + k);
+    return rows;
 }
 void PadsView::paint (juce::Graphics& g)
 {
-    auto a = padsArea().toFloat();
-    const float w = a.getWidth() / 4, h = a.getHeight() / 4;
+    const bool drum = isDrum (ctl.sel);
     const auto col = theme::track (ctl.sel);
-    if (isDrum (ctl.sel))
-        for (int i = 0; i < 2; ++i)
-        {
-            const bool on = (i == 0) == qfg;
-            auto r = layoutRect (i).toFloat();
-            g.setColour (on ? theme::fg : theme::panel);
-            g.fillRoundedRectangle (r, theme::radius);
-            g.setColour (on ? theme::ink : theme::fg);
-            g.setFont (font (12.0f, true));
-            g.drawText (i == 0 ? "QFG" : "MPC", r, juce::Justification::centred);
-        }
-    for (int i = 0; i < 16; ++i)
+    auto button = [&g] (juce::Rectangle<int> r, const juce::String& text, bool on)
     {
-        auto r = juce::Rectangle<float> (a.getX() + (float) (i % 4) * w, a.getY() + (float) (i / 4) * h, w, h).reduced (3.0f);
-        const int snd = padSound (i);
-        g.setColour (theme::panel);
+        g.setColour (on ? theme::fg : theme::panel);
+        g.fillRoundedRectangle (r.toFloat(), theme::radius);
+        g.setColour (on ? theme::ink : theme::fg);
+        g.setFont (font (12.0f, true));
+        g.drawText (text, r, juce::Justification::centred, true);
+    };
+    if (drum)
+    {
+        button (headButton (0), "QFG", qfg);
+        button (headButton (1), "MPC", ! qfg);
+    }
+    else
+    {
+        button (headButton (0), "Oct -", false);
+        button (headButton (1), "Oct +", false);
+        button (headButton (2), "Accords", chords);
+        button (headButton (3), pitchName (ctl.key.root) + " " + juce::String::fromUTF8 (ctl.key.def().name)
+                                    + juce::String::fromUTF8 (" ▾"), false);
+    }
+    auto a = padsArea().toFloat();
+    const int nc = cols();
+    const float w = a.getWidth() / (float) nc, h = a.getHeight() / 4;
+    for (int i = 0; i < nc * 4; ++i)
+    {
+        auto r = juce::Rectangle<float> (a.getX() + (float) (i % nc) * w, a.getY() + (float) (i / nc) * h, w, h).reduced (3.0f);
+        const int row = drum ? -1 : padRow (i);
+        const bool root = ! drum && row >= 0 && ctl.key.isRoot (row);
+        g.setColour (drum || row >= 0 ? (root ? mixed (col, 0.28f, theme::panel) : theme::panel) : theme::panel.withAlpha (0.35f));
         g.fillRoundedRectangle (r, 6.0f);
         for (auto& [_, d] : down)
-            if (d.first == i)
+            if (d.pad == i && d.track == ctl.sel)
             {
                 g.setColour (col);
-                g.fillRoundedRectangle (r.withTrimmedTop (r.getHeight() * (1.0f - d.second)), 6.0f);
+                g.fillRoundedRectangle (r.withTrimmedTop (r.getHeight() * (1.0f - d.vel)), 6.0f);
             }
-        if (isDrum (ctl.sel) && snd == ctl.lane) { g.setColour (col); g.drawRoundedRectangle (r, 6.0f, 2.0f); }
+        if (drum && padSound (i) == ctl.lane) { g.setColour (col); g.drawRoundedRectangle (r, 6.0f, 2.0f); }
+        if (! drum && row < 0) continue;
         g.setColour (theme::fg);
         g.setFont (font (13.0f, true));
-        g.drawText (isDrum (ctl.sel) ? juce::String (kLaneNames[snd]) : noteName (rowNote (ctl.sel, snd)),
+        g.drawText (drum ? juce::String (kLaneNames[padSound (i)]) : noteName (ctl.note (ctl.sel, row)),
                     r.reduced (8.0f, 6.0f), juce::Justification::bottomLeft, true);
     }
 }
 void PadsView::mouseDown (const juce::MouseEvent& e)
 {
-    if (isDrum (ctl.sel))
-        for (int i = 0; i < 2; ++i)
-            if (layoutRect (i).contains (e.getPosition())) { qfg = i == 0; repaint(); return; }
+    const bool drum = isDrum (ctl.sel);
+    for (int i = 0; i < (drum ? 2 : 4); ++i)
+        if (headButton (i).contains (e.getPosition()))
+        {
+            if (drum) qfg = i == 0;
+            else if (i == 0) octave = juce::jmax (0, octave - 1);
+            else if (i == 1) octave = juce::jmin (2, octave + 1);
+            else if (i == 2) chords = ! chords;
+            else if (onKey) onKey();
+            repaint();
+            return;
+        }
     const int pad = padAt (e.getPosition());
     if (pad < 0) return;
     auto a = padsArea();
-    const float cell = (float) a.getHeight() / 4.0f, y = (float) (e.getPosition().y - a.getY()) - (float) (pad / 4) * cell;
+    const float cell = (float) a.getHeight() / 4.0f, y = (float) (e.getPosition().y - a.getY()) - (float) (pad / cols()) * cell;
     const float vel = juce::jlimit (0.25f, 1.0f, 1.0f - y / cell * 0.75f);   // higher on the pad, harder
-    const int snd = padSound (pad);
-    if (isDrum (ctl.sel)) { ctl.lane = snd; ctl.audio.drumHit (snd, (int) (vel * 127)); }
-    else ctl.audio.note (ctl.sel, rowNote (ctl.sel, snd), true);
-    down[e.source.getIndex()] = { pad, vel };
-    ctl.recordHit (snd, (int) (vel * 127));              // (REC on and playing: into the clip that plays)
+    const int v = (int) (vel * 127);
+    Down d { pad, vel, {}, ctl.sel };
+    if (drum)
+    {
+        const int snd = padSound (pad);
+        ctl.lane = snd;
+        ctl.audio.drumHit (snd, v);
+        ctl.recordHit (snd, v);                       // (REC on and playing: into the clip that plays)
+    }
+    else
+    {
+        for (int row : padRows (pad))
+        {
+            d.notes.push_back (ctl.note (ctl.sel, row));
+            ctl.audio.note (ctl.sel, d.notes.back(), true);
+            ctl.recordHit (row, v);
+        }
+        if (d.notes.empty()) return;
+    }
+    down[e.source.getIndex()] = d;
     ctl.notify();
 }
 void PadsView::mouseUp (const juce::MouseEvent& e)
 {
     auto it = down.find (e.source.getIndex());
     if (it == down.end()) return;
-    if (! isDrum (ctl.sel)) ctl.audio.note (ctl.sel, rowNote (ctl.sel, padSound (it->second.first)), false);
+    for (int n : it->second.notes) ctl.audio.note (it->second.track, n, false);
     down.erase (it);
     repaint();
+}
+
+// =================================================================== icons
+void IconButton::paintButton (juce::Graphics& g, bool over, bool isDown)
+{
+    auto r = getLocalBounds().toFloat().reduced (0.5f);
+    g.setColour (isDown ? theme::panel.brighter (0.15f) : over ? theme::panel.brighter (0.05f) : theme::panel);
+    g.fillRoundedRectangle (r, theme::radius);
+    g.setColour (theme::line);
+    g.drawRoundedRectangle (r, theme::radius, 1.0f);
+    // a curved arrow: an arc over the top, its head pointing back down (undo: to the left; redo: mirrored)
+    const float s = juce::jmin (r.getWidth(), r.getHeight()) * 0.42f, cx = r.getCentreX(), cy = r.getCentreY() + s * 0.15f;
+    juce::Path arc;
+    arc.addCentredArc (cx, cy, s * 0.62f, s * 0.55f, 0.0f, -juce::MathConstants<float>::halfPi * 1.25f,
+                       juce::MathConstants<float>::halfPi * 0.9f, true);
+    juce::Path head;
+    const float hx = cx - s * 0.62f * std::sin (juce::MathConstants<float>::halfPi * 1.25f), hy = cy - s * 0.55f * std::cos (juce::MathConstants<float>::halfPi * 1.25f);
+    head.addTriangle (hx - s * 0.32f, hy - s * 0.05f, hx + s * 0.22f, hy - s * 0.12f, hx - s * 0.02f, hy + s * 0.38f);
+    const auto flip = this->icon == Icon::redo ? juce::AffineTransform::scale (-1.0f, 1.0f, cx, cy) : juce::AffineTransform();
+    g.setColour ((isEnabled() ? theme::fg : theme::dim).withAlpha (isEnabled() ? 1.0f : 0.5f));
+    g.strokePath (arc, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded), flip);
+    g.fillPath (head, flip);
 }
 
 // =================================================================== knobs
@@ -803,20 +957,21 @@ StepSheet::StepSheet (Controller& c, int r, int s, std::function<void()> close)
         for (int i = 0; i < labels.size(); ++i)
         {
             auto* b = arr.add (new juce::TextButton (labels[i]));
-            b->onClick = [f, i, this] { f (i); sync(); ctl.stepChanged(); };
+            b->onClick = [f, i, this] { ctl.remember ("sheet"); f (i); sync(); ctl.stepChanged(); };
             addAndMakeVisible (b);
         }
     };
     make (prob, { "100%", "75%", "50%", "25%" }, [this] (int i) { if (auto* x = ctl.step (row, step)) x->prob = (uint8_t) (100 - i * 25); });
     make (cond, { "Toujours", "1:2", "2:2", "1:4", "Fill", "Sans fill" }, [this] (int i) { if (auto* x = ctl.step (row, step)) x->cond = (Cond) i; });
     make (ratchet, { "x1", "x2", "x3", "x4" }, [this] (int i) { if (auto* x = ctl.step (row, step)) x->ratchet = (uint8_t) (i + 1); });
-    early.onClick = [this] { if (auto* x = ctl.step (row, step)) x->nudge = (int8_t) juce::jmax (-3, x->nudge - 1); sync(); ctl.stepChanged(); };
-    late.onClick = [this] { if (auto* x = ctl.step (row, step)) x->nudge = (int8_t) juce::jmin (3, x->nudge + 1); sync(); ctl.stepChanged(); };
-    clearLocks.onClick = [this] { if (auto* clip = ctl.editClip()) clip->data.clearLock (step, -1); ctl.stepChanged(); };
+    early.onClick = [this] { ctl.remember ("sheet"); if (auto* x = ctl.step (row, step)) x->nudge = (int8_t) juce::jmax (-3, x->nudge - 1); sync(); ctl.stepChanged(); };
+    late.onClick = [this] { ctl.remember ("sheet"); if (auto* x = ctl.step (row, step)) x->nudge = (int8_t) juce::jmin (3, x->nudge + 1); sync(); ctl.stepChanged(); };
+    clearLocks.onClick = [this] { ctl.remember ("sheet"); if (auto* clip = ctl.editClip()) clip->data.clearLock (step, -1); ctl.stepChanged(); };
     del.onClick = [this]
     {
         if (auto* clip = ctl.editClip())
         {
+            ctl.remember ("sheet");
             if (clip->data.drum) clip->data.lanes[(size_t) row][(size_t) step] = {};
             else { clip->data.notes[(size_t) step] = {}; clip->data.noteLen[(size_t) step].fill (0); }
             ctl.stepChanged();
@@ -827,7 +982,7 @@ StepSheet::StepSheet (Controller& c, int r, int s, std::function<void()> close)
     vel.setSliderStyle (juce::Slider::LinearHorizontal);
     vel.setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 24);
     vel.setRange (1, 127, 1);
-    vel.onValueChange = [this] { if (auto* x = ctl.step (row, step)) { x->vel = (uint8_t) vel.getValue(); ctl.stepChanged(); } };
+    vel.onValueChange = [this] { if (auto* x = ctl.step (row, step)) { ctl.remember ("sheet"); x->vel = (uint8_t) vel.getValue(); ctl.stepChanged(); } };
     for (auto* b : { &early, &late, &clearLocks, &del, &ok }) addAndMakeVisible (b);
     addAndMakeVisible (vel);
     sync();
@@ -965,7 +1120,7 @@ void SoundSheet::audition()
         juce::Timer::callAfterDelay (440, [a] { a->drumHit (3, 110); });
         return;
     }
-    const int t = ctl.sel, note = rowNote (t, 7);
+    const int t = ctl.sel, note = ctl.note (t, 7);
     a->note (t, note, true);
     juce::Timer::callAfterDelay (450, [a, t, note] { a->note (t, note, false); });
 }
@@ -1012,6 +1167,116 @@ void SoundSheet::paint (juce::Graphics& g)
                 title.withTrimmedLeft (12), juce::Justification::centredLeft);
 }
 void SoundSheet::mouseUp (const juce::MouseEvent& e)
+{
+    if (! panel().contains (e.getPosition())) onClose();
+}
+
+// =================================================================== the settings
+SettingsSheet::SettingsSheet (Controller& c, std::function<void()> close, std::function<juce::String()> info,
+                              std::function<void()> nextBuffer)
+    : ctl (c), onClose (std::move (close)), audioInfo (std::move (info))
+{
+    view.setViewedComponent (&content, false);
+    view.setScrollBarsShown (false, false, true, false);
+    view.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
+    addAndMakeVisible (view);
+    addAndMakeVisible (ok);
+    ok.onClick = [this] { onClose(); };
+    ok.setToggleState (true, juce::dontSendNotification);
+    for (auto* text : { "Tonalité", "Gamme", "Swing", "Jeu", "Audio" })
+    {
+        auto* l = labels.add (new Label());
+        l->text = juce::String::fromUTF8 (text);
+        content.addAndMakeVisible (l);
+    }
+    for (int k = 0; k < 12; ++k)
+    {
+        auto* b = roots.add (new juce::TextButton (pitchName (k)));
+        b->onClick = [this, k] { auto key = ctl.key; key.root = k; ctl.setKey (key); sync(); };
+        content.addAndMakeVisible (b);
+    }
+    for (int i = 0; i < (int) scales().size(); ++i)
+    {
+        auto* b = scaleButtons.add (new juce::TextButton (juce::String::fromUTF8 (scales()[(size_t) i].name)));
+        b->onClick = [this, i] { auto key = ctl.key; key.scale = i; ctl.setKey (key); sync(); };
+        content.addAndMakeVisible (b);
+    }
+    swing.setSliderStyle (juce::Slider::LinearHorizontal);
+    swing.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 28);
+    swing.setRange (0, 100, 1);
+    swing.textFromValueFunction = [] (double v) { return juce::String (50.0 + v / 4.0, 1) + " %"; };   // MPC's swing
+    swing.onValueChange = [this] { ctl.setSwing ((int) swing.getValue()); };
+    content.addAndMakeVisible (swing);
+    metronome.onClick = [this] { auto p = ctl.prefs; p.metronome = ! p.metronome; ctl.setPrefs (p); sync(); };
+    countIn.onClick = [this] { auto p = ctl.prefs; p.countIn = ! p.countIn; ctl.setPrefs (p); sync(); };
+    quantize.onClick = [this] { auto p = ctl.prefs; p.quantizeRec = ! p.quantizeRec; ctl.setPrefs (p); sync(); };
+    buffer.onClick = [this, nextBuffer] { nextBuffer(); sync(); };
+    for (auto* b : { &metronome, &countIn, &quantize, &buffer }) content.addAndMakeVisible (b);
+    sync();
+}
+void SettingsSheet::Label::paint (juce::Graphics& g)
+{
+    g.setColour (theme::dim);
+    g.setFont (font (12.0f, true));
+    g.drawText (text, getLocalBounds(), juce::Justification::bottomLeft);
+}
+void SettingsSheet::sync()
+{
+    for (int k = 0; k < roots.size(); ++k) roots[k]->setToggleState (k == ctl.key.root, juce::dontSendNotification);
+    for (int i = 0; i < scaleButtons.size(); ++i) scaleButtons[i]->setToggleState (i == ctl.key.scale, juce::dontSendNotification);
+    swing.setValue (ctl.swing, juce::dontSendNotification);
+    metronome.setToggleState (ctl.prefs.metronome, juce::dontSendNotification);
+    countIn.setToggleState (ctl.prefs.countIn, juce::dontSendNotification);
+    quantize.setToggleState (ctl.prefs.quantizeRec, juce::dontSendNotification);
+    buffer.setButtonText (audioInfo ? audioInfo() : juce::String());
+    repaint();
+}
+juce::Rectangle<int> SettingsSheet::panel() const
+{
+    const int w = juce::jmin (getWidth(), 680), h = juce::jmin (getHeight() - 24, 600);
+    return { (getWidth() - w) / 2, getHeight() - h, w, h };
+}
+void SettingsSheet::resized()
+{
+    auto p = panel().reduced (16);
+    p.removeFromTop (34);
+    auto bottom = p.removeFromBottom (44);
+    ok.setBounds (bottom.removeFromRight (90));
+    p.removeFromBottom (8);
+    view.setBounds (p);
+    // the content, as tall as it needs: a label, then its buttons in rows
+    const int w = p.getWidth(), bh = 40, g = 6;
+    int y = 0;
+    auto label = [&] (int i) { labels[i]->setBounds (0, y, w, 24); y += 28; };
+    auto flow = [&] (juce::Array<juce::Component*> cs, int minW)
+    {
+        const int perRow = juce::jmax (1, juce::jmin (cs.size(), (w + g) / (minW + g)));
+        const int bw = (w - (perRow - 1) * g) / perRow;
+        for (int i = 0; i < cs.size(); ++i)
+            cs[i]->setBounds ((i % perRow) * (bw + g), y + (i / perRow) * (bh + g), bw, bh);
+        y += ((cs.size() + perRow - 1) / perRow) * (bh + g) + 8;
+    };
+    juce::Array<juce::Component*> r, sc;
+    for (auto* b : roots) r.add (b);
+    for (auto* b : scaleButtons) sc.add (b);
+    label (0); flow (r, 44);
+    label (1); flow (sc, 118);
+    label (2); swing.setBounds (0, y, w, bh); y += bh + 8;
+    label (3); flow ({ &metronome, &countIn, &quantize }, 180);
+    label (4); flow ({ &buffer }, 200);
+    content.setSize (w, y);
+}
+void SettingsSheet::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colours::black.withAlpha (0.45f));
+    auto p = panel();
+    g.setColour (theme::panel);
+    g.fillRoundedRectangle (p.toFloat(), 10.0f);
+    g.setColour (theme::fg);
+    g.setFont (font (19.0f, true));
+    g.drawText (juce::String::fromUTF8 ("Réglages"), p.reduced (16).removeFromTop (28), juce::Justification::centredLeft);
+}
+void SettingsSheet::mouseUp (const juce::MouseEvent& e)
 {
     if (! panel().contains (e.getPosition())) onClose();
 }

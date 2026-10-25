@@ -12,9 +12,10 @@ namespace sloop
 {
 // The app's tracks: DR (SLOOP's drum track) then T1..T3 (its synth parts 0..2)
 constexpr int kTracks = 4;
-constexpr int kSteps = 16;          // a clip's steps (SLOOP's engine takes up to 64: longer clips come later)
+constexpr int kMaxSteps = 64;       // a clip's longest (SLOOP's NSTEP): 4 bars of 1/16
+constexpr int kBar = 16;            // a bar's steps: a new clip's length, and where launched clips start
 constexpr int kLanes = 16;
-constexpr int kRows = 16;           // the piano roll's rows (and the pads): two octaves and more of the scale
+constexpr int kRows = 24;           // the piano roll's rows: the degrees of the key's scale, from its root
 constexpr int kKnobs = 4;
 constexpr int kMaxLocks = 24;       // a track's parameter locks (SLOOP's NLOCK)
 constexpr int kParamSlots = 80;     // room for every SLOOP track parameter (se_param_count(): 71)
@@ -35,7 +36,7 @@ struct StepData
     uint8_t prob = 100;             // %
     int8_t nudge = 0;               // -3..3 sixths of a step
     Cond cond = Cond::always;
-    uint16_t rows = 0;              // synth steps: the piano roll rows played (bit r = row r)
+    uint32_t rows = 0;              // synth steps: the piano roll rows played (bit r = row r)
 };
 
 struct LockData { uint8_t step = 0, param = 0; int16_t value = 0; };   // on `step`, SLOOP parameter `param` = value
@@ -43,25 +44,25 @@ struct LockData { uint8_t step = 0, param = 0; int16_t value = 0; };   // on `st
 struct ClipData
 {
     uint8_t drum = 1;
-    uint8_t length = kSteps;
-    std::array<std::array<StepData, kSteps>, kLanes> lanes {};   // the drum track: [lane][step]
-    std::array<StepData, kSteps> notes {};                       // a synth track
-    std::array<LockData, kMaxLocks> locks {};                    // parameter locks, any sound parameter
+    uint8_t length = kBar;                                          // 1..kMaxSteps
+    std::array<std::array<StepData, kMaxSteps>, kLanes> lanes {};   // the drum track: [lane][step]
+    std::array<StepData, kMaxSteps> notes {};                       // a synth track
+    std::array<LockData, kMaxLocks> locks {};                       // parameter locks, any sound parameter
     uint8_t nLocks = 0;
-    std::array<std::array<uint8_t, kRows>, kSteps> noteLen {};   // a synth note's length in steps ([start][row]; 0, 1: one)
+    std::array<std::array<uint8_t, kRows>, kMaxSteps> noteLen {};   // a synth note's length in steps ([start][row]; 0, 1: one)
 
     // a synth note held over several steps: it starts on a step (its row's bit) and lasts noteLength steps
     int noteLength (int step, int row) const { return juce::jmax (1, (int) noteLen[(size_t) step][(size_t) row]); }
     int noteStart (int row, int step) const          // the first step of the note of `row` sounding on `step`, else -1
     {
         for (int s = step; s >= 0; --s)
-            if (notes[(size_t) s].rows >> row & 1) return s + noteLength (s, row) > step ? s : -1;
+            if (notes[(size_t) s].rows >> row & 1u) return s + noteLength (s, row) > step ? s : -1;
         return -1;
     }
     int maxLength (int row, int start) const         // up to the row's next note, or the clip's end
     {
         int s = start + 1;
-        while (s < length && ! (notes[(size_t) s].rows >> row & 1)) ++s;
+        while (s < length && ! (notes[(size_t) s].rows >> row & 1u)) ++s;
         return s - start;
     }
 
@@ -89,7 +90,7 @@ struct ClipData
 
     bool stepOn (int row, int step) const
     {
-        return drum ? lanes[(size_t) row][(size_t) step].on != 0 : (notes[(size_t) step].rows >> row & 1) != 0;
+        return drum ? lanes[(size_t) row][(size_t) step].on != 0 : (notes[(size_t) step].rows >> row & 1u) != 0;
     }
     bool hasLocks (int step) const
     {
@@ -122,18 +123,42 @@ constexpr int kDefaultKit = 15;                                         // HOUSE
 constexpr std::array<Sound, kTracks> kDefaultSounds {{ { -1, kDefaultKit }, { 0, 2 }, { 1, 0 }, { 6, 6 } }};
                                                                         // -, ANALOG SUB BASS, DIGITAL RHODES, TRIO SYNC LEAD
 
-// do mineur naturel, as the mockup: the piano roll only shows the scale's notes
-inline int rowNote (int track, int row)
+// The key: a root and a scale. The piano roll and the keyboard only show its notes (row r = its r-th degree from
+// the root), so a melody stays in key, and changing the key moves every clip into the new one (a row keeps its
+// degree). C minor at first, as the mockup
+struct ScaleDef { const char* name; std::array<int8_t, 12> steps; int size; };
+inline const std::array<ScaleDef, 11>& scales()
 {
-    static const int scale[] = { 0, 2, 3, 5, 7, 8, 10 };
-    static const int base[] = { 0, 36, 60, 72 };
-    return base[track] + 12 * (row / 7) + scale[row % 7];
+    static const std::array<ScaleDef, 11> s {{
+        { "Mineur", { 0, 2, 3, 5, 7, 8, 10 }, 7 },          { "Majeur", { 0, 2, 4, 5, 7, 9, 11 }, 7 },
+        { "Dorien", { 0, 2, 3, 5, 7, 9, 10 }, 7 },          { "Phrygien", { 0, 1, 3, 5, 7, 8, 10 }, 7 },
+        { "Lydien", { 0, 2, 4, 6, 7, 9, 11 }, 7 },          { "Mixolydien", { 0, 2, 4, 5, 7, 9, 10 }, 7 },
+        { "Mineur harm.", { 0, 2, 3, 5, 7, 8, 11 }, 7 },    { "Penta maj.", { 0, 2, 4, 7, 9 }, 5 },
+        { "Penta min.", { 0, 3, 5, 7, 10 }, 5 },            { "Blues", { 0, 3, 5, 6, 7, 10 }, 6 },
+        { "Chromatique", { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }, 12 },
+    }};
+    return s;
 }
-inline juce::String noteName (int midi)
+struct Key
+{
+    int root = 0;                   // 0 C .. 11 B
+    int scale = 0;                  // scales()
+    const ScaleDef& def() const { return scales()[(size_t) juce::jlimit (0, (int) scales().size() - 1, scale)]; }
+    bool isRoot (int row) const { return row % def().size == 0; }
+    bool operator== (const Key& o) const { return root == o.root && scale == o.scale; }
+};
+inline int rowNote (int track, int row, const Key& key)
+{
+    static const int base[] = { 0, 36, 60, 72 };
+    const auto& d = key.def();
+    return juce::jlimit (0, 127, base[track] + key.root + 12 * (row / d.size) + d.steps[(size_t) (row % d.size)]);
+}
+inline juce::String pitchName (int pc)
 {
     static const char* n[] = { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
-    return juce::String (n[midi % 12]) + juce::String (midi / 12 - 1);
+    return n[((pc % 12) + 12) % 12];
 }
+inline juce::String noteName (int midi) { return pitchName (midi) + juce::String (midi / 12 - 1); }
 
 struct Session
 {
@@ -147,6 +172,7 @@ struct Session
     {
         Clip c { std::move (name), {} };
         c.data.drum = isDrum (t) ? 1 : 0;
+        c.data.length = kBar;
         return c;
     }
 };
@@ -177,7 +203,7 @@ inline Session demoSession()
     {
         auto& x = c.notes[(size_t) step];
         x.on = 1; x.vel = (uint8_t) vel;
-        for (int r : rows) x.rows = (uint16_t) (x.rows | 1 << r);
+        for (int r : rows) x.rows |= 1u << r;
     };
     auto bass = Session::newClip (1, "Ligne");
     notes (bass.data, 0, { 0 }, 110); notes (bass.data, 3, { 0 }, 80); notes (bass.data, 6, { 2 }, 100);

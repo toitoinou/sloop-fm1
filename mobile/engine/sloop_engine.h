@@ -33,6 +33,9 @@ int se_playing(void);
 void se_set_bpm(int bpm);
 int se_position(int track);                   /* the step playing, -1 when stopped */
 void se_set_fill(int on);                     /* held FILL: steps SE_FILL_ONLY play, SE_FILL_NOT do not */
+void se_set_swing(int amount);                /* 0 (straight) .. 100 (the most: MPC's 75 %), the 1/16 steps */
+void se_set_metronome(int on);                /* a click on every beat while playing, louder on the bar's first */
+void se_click(int accent);                    /* one click now (the app's count-in) */
 void se_panic(void);
 
 /* sounds. The names and counts read constant tables only: they may be called from any thread */
@@ -47,6 +50,7 @@ int se_kit_count(void);                       /* (USR1..USR3+4 play the user sam
 const char *se_kit_name(int kit);
 void se_set_kit(int kit);
 const char *se_lane_name(int lane);
+int se_lane_note(int lane);                   /* the MIDI note (General MIDI drums) a drum lane answers to */
 
 /* what the parameters are (constant tables: any thread). id: core.h P_* (track parameters below SE_P_E0, the
  * engine's own EDIT parameters from SE_P_E0 to SE_P_E0 + 7). Returns 0 for an unknown one */
@@ -78,6 +82,9 @@ void se_synth_step_cont(int track, int step, const uint8_t *notes, int n, unsign
 int se_step_flags(int track, int step);       /* a synth step's flags as the engine has them (tests) */
 typedef struct { uint8_t step, param; int16_t value; } se_lock_t;
 void se_set_locks(int track, const se_lock_t *locks, int count);   /* replaces every lock of the track */
+/* replaces the locks of one step only (their .step is ignored), the locks in force left alone: the app writes
+ * the steps just ahead of the playhead, and clears the ones behind it, while the track plays */
+void se_set_step_locks(int track, int step, const se_lock_t *locks, int count);
 
 /* playing live */
 void se_drum_hit(int lane, int velocity);

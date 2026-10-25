@@ -16,6 +16,8 @@ public:
     explicit Controller (AudioEngine& a, bool restore = true) : audio (a)
     {
         readParams();
+        if (restore) prefs = store::readPrefs();
+        audio.setMetronome (prefs.metronome);
         if (auto saved = restore ? store::read (store::autosaveFile()) : std::nullopt) load (*saved);
         else
         {
@@ -45,6 +47,10 @@ public:
     struct Pending { int track, slot, step; };
     std::vector<Pending> pendingRecord;                  // recorded on a step not played yet: sent once it has passed
     int bpm = 118;
+    int swing = 0;                                       // 0..100 (SLOOP's SWING: 50 % straight .. 75 %)
+    Key key;
+    Prefs prefs;                                         // the app's settings (metronome, count-in, quantize)
+    std::optional<Clip> clipboard;
     std::function<void()> changed;                       // every screen repaints
 
     static constexpr int kNone = -2, kStop = -1;
@@ -55,6 +61,7 @@ public:
         return c ? &*c : nullptr;
     }
     Clip* editClip() { return editClip (sel); }
+    int note (int t, int row) const { return rowNote (t, row, key); }   // a piano roll row's MIDI note
     bool editingPlaying() const { return audio.playingSlot[sel].load() == editSlot[(size_t) sel]; }
     void notify() { if (changed) changed(); }
 
@@ -62,12 +69,21 @@ public:
     void togglePlay()
     {
         playing = ! playing;
-        audio.play (playing);
+        audio.play (playing, playing && recording && prefs.countIn);   // (recording: a bar of clicks first)
         if (! playing)
             for (int t = 0; t < kTracks; ++t) queued[(size_t) t] = kNone;
         notify();
     }
     void setBpm (int b) { bpm = juce::jlimit (60, 200, b); audio.setBpm (bpm); notify(); }
+    void setSwing (int v) { swing = juce::jlimit (0, 100, v); audio.setSwing (swing); notify(); }
+    void setKey (Key k) { key = k; audio.setKey (key); notify(); }
+    void setPrefs (const Prefs& p)
+    {
+        prefs = p;
+        audio.setMetronome (prefs.metronome);
+        store::writePrefs (prefs);
+        notify();
+    }
     void setSound (int t, int engine, int preset)
     {
         sounds[(size_t) t] = { engine, preset };
@@ -89,6 +105,8 @@ public:
         Project p;
         p.name = projectName;
         p.bpm = bpm;
+        p.swing = swing;
+        p.key = key;
         p.session = session;
         p.sounds = sounds;
         p.params = params;
@@ -109,7 +127,11 @@ public:
         editSlot.fill (0);
         queued.fill (kNone);
         page = { { Page::mix, Page::macro, Page::macro, Page::macro } };
+        undoStack.clear();
+        redoStack.clear();
         setBpm (p.bpm);
+        setSwing (p.swing);
+        setKey (p.key);
         for (int t = 0; t < kTracks; ++t)
         {
             const auto snd = p.sounds[(size_t) t];
@@ -193,12 +215,14 @@ public:
     }
     void createClip (int t, int s)
     {
+        remember ("clip");
         session.at (t, s) = Session::newClip (t, "Clip " + juce::String (s + 1));
         editSlot[(size_t) t] = s;
         notify();
     }
     void deleteClip (int t, int s)
     {
+        remember ("clip");
         session.at (t, s).reset();
         auto& pl = playlist[(size_t) t];
         if (std::find (pl.begin(), pl.end(), s) != pl.end()) stopTrack (t);
@@ -206,6 +230,7 @@ public:
     }
     void duplicateClip (int t, int s)
     {
+        remember ("clip");
         int r = s + 1;
         while (r < session.scenes() && session.at (t, r)) ++r;
         if (r == session.scenes()) session.addScene();
@@ -213,9 +238,10 @@ public:
         session.at (t, r)->name << " bis";
         notify();
     }
-    void addScene() { session.addScene(); notify(); }
+    void addScene() { remember ("scene"); session.addScene(); notify(); }
     void insertSceneCopy (int r, bool capture)
     {
+        remember ("scene");
         for (int t = 0; t < kTracks; ++t)
         {
             auto& col = session.cols[(size_t) t];
@@ -229,6 +255,7 @@ public:
     void deleteScene (int r)
     {
         if (session.scenes() <= 1) return;
+        remember ("scene");
         for (int t = 0; t < kTracks; ++t)
         {
             auto& pl = playlist[(size_t) t];
@@ -239,17 +266,85 @@ public:
         notify();
     }
 
+    // copy / paste a clip (a drum clip onto the drum track, a synth clip onto a synth track)
+    void copyClip (int t, int s) { if (session.at (t, s)) clipboard = session.at (t, s); notify(); }
+    bool canPaste (int t) const { return clipboard && (clipboard->data.drum != 0) == isDrum (t); }
+    void pasteClip (int t, int s)
+    {
+        if (! canPaste (t)) return;
+        remember ("clip");
+        session.at (t, s) = clipboard;
+        editSlot[(size_t) t] = s;
+        clipEdited (t, s);
+    }
+    // a clip's length (1..64 steps); twice: the clip played twice in a row, as one clip twice as long
+    void setLength (int t, int s, int len)
+    {
+        auto& c = session.at (t, s);
+        if (! c) return;
+        remember ("length");
+        c->data.length = (uint8_t) juce::jlimit (1, kMaxSteps, len);
+        clipEdited (t, s);
+    }
+    void doubleClip (int t, int s)
+    {
+        auto& c = session.at (t, s);
+        if (! c || c->data.length * 2 > kMaxSteps) return;
+        remember ("length");
+        auto& d = c->data;
+        const int n = d.length;
+        for (int i = 0; i < n; ++i)
+        {
+            for (auto& ln : d.lanes) ln[(size_t) (n + i)] = ln[(size_t) i];
+            d.notes[(size_t) (n + i)] = d.notes[(size_t) i];
+            d.noteLen[(size_t) (n + i)] = d.noteLen[(size_t) i];
+        }
+        const int locks = d.nLocks;
+        for (int i = 0; i < locks; ++i)
+            d.setLock (d.locks[(size_t) i].step + n, d.locks[(size_t) i].param, d.locks[(size_t) i].value);   // (while there is room)
+        d.length = (uint8_t) (n * 2);
+        clipEdited (t, s);
+    }
+    void quantizeClip (int t, int s)                     // every step back on the grid
+    {
+        auto& c = session.at (t, s);
+        if (! c) return;
+        remember ("quantize");
+        for (auto& ln : c->data.lanes) for (auto& x : ln) x.nudge = 0;
+        for (auto& x : c->data.notes) x.nudge = 0;
+        clipEdited (t, s);
+    }
+
+    // ---- undo / redo: the session (clips, scenes) as it was before an edit. Edits of one kind close together
+    // (a drag, a few taps) are one step back; a recording pass is one step back however long it is
+    void remember (const char* kind)
+    {
+        const double t = juce::Time::getMillisecondCounterHiRes();
+        const bool same = lastKind == kind && (lastKind == juce::String ("rec") || t - lastEdit < 400.0);
+        lastEdit = t;
+        lastKind = kind;
+        if (same) return;
+        undoStack.push_back ({ session, editSlot, playlist });
+        if (undoStack.size() > 40) undoStack.erase (undoStack.begin());
+        redoStack.clear();
+    }
+    bool canUndo() const { return ! undoStack.empty(); }
+    bool canRedo() const { return ! redoStack.empty(); }
+    void undo() { travel (undoStack, redoStack); }
+    void redo() { travel (redoStack, undoStack); }
+
     // ---- steps
     void toggleStep (int row, int step, bool on)
     {
         auto* c = editClip();
         if (c == nullptr) return;
+        remember ("step");
         auto& d = c->data;
         if (d.drum) d.lanes[(size_t) row][(size_t) step].on = on;
         else
         {
             auto& x = d.notes[(size_t) step];
-            x.rows = (uint16_t) (on ? x.rows | 1 << row : x.rows & ~(1 << row));
+            x.rows = on ? x.rows | 1u << row : x.rows & ~(1u << row);
             x.on = x.rows != 0;
             d.noteLen[(size_t) step][(size_t) row] = on ? 1 : 0;
         }
@@ -266,6 +361,7 @@ public:
         if (c == nullptr || c->data.drum) return;
         len = juce::jlimit (1, c->data.maxLength (row, start), len);
         if (c->data.noteLength (start, row) == len) return;
+        remember ("length");
         c->data.noteLen[(size_t) start][(size_t) row] = (uint8_t) len;
         stepChanged();
     }
@@ -359,6 +455,7 @@ public:
         {
             if (auto* c = editClip())
             {
+                remember ("lock");
                 for (auto& [row, s] : held) c->data.setLock (s, d.param, v);
                 lockedSinceHold = true;
                 stepChanged();
@@ -375,6 +472,7 @@ public:
         if (! d.valid) return;
         if (! held.empty())
         {
+            remember ("lock");
             if (auto* c = editClip())
                 for (auto& [row, s] : held) c->data.clearLock (s, d.param);
             lockedSinceHold = true;
@@ -385,12 +483,20 @@ public:
     }
 
     // ---- live recording: a pad played while REC is on goes into the clip the track plays, on the nearest step
-    void toggleRecord() { recording = ! recording; notify(); }
+    // REC while stopped starts the song too (after a bar of clicks, if the count-in is on)
+    void toggleRecord()
+    {
+        recording = ! recording;
+        lastKind = {};                                   // (a new take: its own step back)
+        if (recording && ! playing) togglePlay();
+        else notify();
+    }
     void recordHit (int row, int velocity)
     {
-        if (! recording || ! playing) return;
+        if (! recording || ! playing || audio.countIn.load() > 0) return;
         const int t = sel;
         int slot = audio.playingSlot[t].load();
+        remember ("rec");
         if (slot < 0)                                    // nothing plays on the track: a new clip, playing at once
         {
             slot = editSlot[(size_t) t];
@@ -407,18 +513,22 @@ public:
         if (! clip) return;
         const int pos = audio.position[t].load();
         if (pos < 0) return;
-        const bool late = audio.stepPhase[t].load() >= 0.5f;   // nearer the next step
+        const float phase = audio.stepPhase[t].load();
+        const bool late = phase >= 0.5f;                 // nearer the next step
         const int step = late ? (pos + 1) % clip->data.length : pos;
+        // not quantized: the hit keeps its place between the steps (a nudge, in sixths of a step)
+        const int nudge = prefs.quantizeRec ? 0 : juce::roundToInt ((late ? phase - 1.0f : phase) * 6.0f);
         auto& d = clip->data;
-        if (d.drum) { auto& x = d.lanes[(size_t) row][(size_t) step]; x.on = 1; x.vel = (uint8_t) velocity; }
+        if (d.drum) { auto& x = d.lanes[(size_t) row][(size_t) step]; x.on = 1; x.vel = (uint8_t) velocity; x.nudge = (int8_t) juce::jlimit (-3, 3, nudge); }
         else
         {
             if (const int st = d.noteStart (row, step); st >= 0 && st < step)   // a held note there ends before it
                 d.noteLen[(size_t) st][(size_t) row] = (uint8_t) (step - st);
             auto& x = d.notes[(size_t) step];
-            x.rows = (uint16_t) (x.rows | 1 << row);
+            x.rows |= 1u << row;
             x.on = 1;
             x.vel = (uint8_t) velocity;
+            x.nudge = (int8_t) juce::jlimit (-3, 3, nudge);
             d.noteLen[(size_t) step][(size_t) row] = 1;
         }
         if (late) pendingRecord.push_back ({ t, slot, step });   // (it already sounded: not twice)
@@ -428,6 +538,37 @@ public:
     bool lockedSinceHold = false;                        // a knob turned while steps were held
 
 private:
+    struct UndoState { Session session; std::array<int, kTracks> editSlot; std::array<std::vector<int>, kTracks> playlist; };
+    std::vector<UndoState> undoStack, redoStack;
+    juce::String lastKind;
+    double lastEdit = 0;
+    void travel (std::vector<UndoState>& from, std::vector<UndoState>& to)
+    {
+        if (from.empty()) return;
+        to.push_back ({ session, editSlot, playlist });
+        const auto u = std::move (from.back());
+        from.pop_back();
+        lastKind = {};
+        held.clear();
+        pendingRecord.clear();
+        session = u.session;
+        for (int t = 0; t < kTracks; ++t)
+        {
+            editSlot[(size_t) t] = juce::jlimit (0, session.scenes() - 1, u.editSlot[(size_t) t]);
+            // what plays goes on, with the clips as they were (a clip that is gone stops)
+            std::vector<int> pl;
+            for (int s : u.playlist[(size_t) t])
+                if (s < session.scenes() && session.at (t, s)) pl.push_back (s);
+            if (pl != playlist[(size_t) t])
+            {
+                playlist[(size_t) t] = pl;
+                queued[(size_t) t] = kNone;
+                sendPlaylist (t, AudioEngine::When::now);
+            }
+            else sendPlaylist (t, AudioEngine::When::update);
+        }
+        notify();
+    }
     void readParams()
     {
         seenParamSerial = audio.paramSerial.load();
@@ -450,8 +591,7 @@ private:
             if (queued[(size_t) t] >= from) queued[(size_t) t] += d;
         }
         // the audio thread reports rows: keep it in step with the new numbering
-        for (int t = 0; t < kTracks; ++t)
-            if (! playlist[(size_t) t].empty()) sendPlaylist (t, AudioEngine::When::now);
+        audio.renumber (from, d);
     }
 };
 

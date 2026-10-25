@@ -91,8 +91,12 @@ private:
     void timerCallback() override;
     bool narrow() const { return getWidth() < 560; }
     std::vector<int> rows() const;
-    int firstStep() const { return narrow() ? stepPage * 8 : 0; }
-    int visibleSteps() const { return narrow() ? 8 : kSteps; }
+    int length() const;                              // the clip's steps (a bar without a clip)
+    int visibleSteps() const { return narrow() ? 8 : kBar; }
+    int stepPages() const { return (length() + visibleSteps() - 1) / visibleSteps(); }
+    int firstStep() const { return juce::jlimit (0, stepPages() - 1, stepPage) * visibleSteps(); }
+    int shownRows() const { return gridArea().getHeight() < 300 ? 12 : 16; }   // the piano roll's window
+    void lengthMenu();
     juce::Rectangle<int> gridArea() const { return getLocalBounds().withTrimmedTop (headH + theme::gap); }
     int labelW() const { return (int) ((narrow() ? 62.0f : 84.0f) * theme::textScale); }
     bool cellAt (juce::Point<int>, int& row, int& step) const;
@@ -102,39 +106,59 @@ private:
 
     Controller& ctl;
     std::function<void (int, int)> onSheet;
-    juce::TextButton lanes1 { "Sons 1-8" }, lanes2 { "9-16" }, steps1 { "Pas 1-8" }, steps2 { "9-16" };
-    int lanePage = 0, stepPage = 0;
+    juce::TextButton lanes1 { "Sons 1-8" }, lanes2 { "9-16" }, steps1 { "<" }, steps2 { ">" }, lengthButton;
+    int lanePage = 0, stepPage = 0, rowBase = 0;
     struct Pointer { int row, step; juce::Point<int> at; enum Mode { pressing, painting, velocity, stretching } mode = pressing;
                      bool created = false, sheet = false, value = false; int vel0 = 100; double time = 0; };
     std::map<int, Pointer> pointers;
     static constexpr int headH = 34;
 };
 
+// The pads. The drums: 4 x 4, as Quest for Groove lays them out (the kick and the snare doubled, for two hands),
+// or the 16 sounds in order from the bottom left as an MPC. A synth: a keyboard in the key, in fourths as a Push
+// or a Launchpad (a row up: three degrees of the scale up), only the scale's notes, the roots lit; CHORDS plays
+// the triad of the scale on each pad
 class PadsView : public juce::Component
 {
 public:
     explicit PadsView (Controller& c) : ctl (c) {}
+    std::function<void()> onKey;                     // the key button tapped (the settings)
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
 private:
-    juce::Rectangle<int> padsArea() const;
+    juce::Rectangle<int> padsArea() const { return getLocalBounds().withTrimmedTop (36); }
+    juce::Rectangle<int> headButton (int i) const;   // drums: QFG, MPC; a synth: Oct -, Oct +, Accords, the key
+    int cols() const { return isDrum (ctl.sel) ? 4 : getWidth() >= 520 ? 8 : 5; }
     int padAt (juce::Point<int>) const;
-    juce::Rectangle<int> layoutRect (int i) const;   // the QFG / MPC switch (drums)
-    // the drums as Quest for Groove lays them out (the kick and the snare doubled, for two hands), or the 16 lanes
-    // in order from the bottom left as an MPC; the synth tracks always the second way (the notes rising)
     int padSound (int pad) const
     {
         static constexpr int qfgLanes[16] = { 9, 14, 10, 11,      // low tom, mid tom (conga), high tom, crash
                                               4, 5, 4, 12,        // hat, open hat, hat, ride
                                               7, 2, 2, 7,         // rim (sidestick), snare, snare, rim
                                               3, 0, 0, 13 };      // clap, kick, kick, shaker
-        return isDrum (ctl.sel) && qfg ? qfgLanes[pad] : (3 - pad / 4) * 4 + pad % 4;
+        return qfg ? qfgLanes[pad] : (3 - pad / 4) * 4 + pad % 4;
     }
+    int padRow (int pad) const;                      // a synth pad's degree (piano roll row), -1 out of range
+    std::vector<int> padRows (int pad) const;        // the rows it plays (a chord: three)
     Controller& ctl;
-    bool qfg = true;
-    std::map<int, std::pair<int, float>> down;                             // finger -> (pad, velocity)
+    bool qfg = true, chords = false;
+    int octave = 0;
+    struct Down { int pad; float vel; std::vector<int> notes; int track; };
+    std::map<int, Down> down;                        // finger -> what it plays
+};
+
+// a small button drawn as an icon: undo, redo
+class IconButton : public juce::Button
+{
+public:
+    enum class Icon { undo, redo };
+    explicit IconButton (Icon i) : juce::Button (i == Icon::undo ? "Annuler" : "Refaire"), icon (i) {}
+    void paintButton (juce::Graphics&, bool over, bool down) override;
+
+private:
+    Icon icon;
 };
 
 class KnobStrip : public juce::Component
@@ -203,6 +227,36 @@ private:
     juce::OwnedArray<juce::TextButton> engineButtons, itemButtons;
     juce::Array<int> itemIds;                        // the preset or kit each item button picks
     juce::TextButton ok { "OK" };
+};
+
+// the settings: the key and its scale, the swing; the app's metronome, count-in, recording quantize; the audio
+class SettingsSheet : public juce::Component
+{
+public:
+    SettingsSheet (Controller& c, std::function<void()> close, std::function<juce::String()> audioInfo,
+                   std::function<void()> nextBuffer);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    void sync();
+    juce::Rectangle<int> panel() const;
+    Controller& ctl;
+    std::function<void()> onClose;
+    std::function<juce::String()> audioInfo;
+    juce::Component content;
+    juce::Viewport view;
+    juce::OwnedArray<juce::TextButton> roots, scaleButtons;
+    juce::Slider swing;
+    juce::TextButton metronome { juce::String::fromUTF8 ("Métronome") }, countIn { juce::String::fromUTF8 ("Décompte 1 mesure") },
+        quantize { juce::String::fromUTF8 ("Enregistrer sur la grille") }, buffer, ok { "OK" };
+    struct Label : juce::Component
+    {
+        juce::String text;
+        void paint (juce::Graphics&) override;
+    };
+    juce::OwnedArray<Label> labels;
 };
 
 // a button that is on only while a finger holds it (FILL)

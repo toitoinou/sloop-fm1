@@ -26,6 +26,9 @@ int se_playing(void) { return song.playing; }
 void se_set_bpm(int bpm) { preview_global(G_BPM, bpm); }
 int se_position(int track) { return preview_position((uint32_t)track); }
 void se_set_fill(int on) { fill_held = (uint8_t)(on != 0); }
+void se_set_swing(int amount) { preview_global(G_SWING, amount); }
+void se_set_metronome(int on) { preview_global(G_CLOCK, on ? CLICK_ON : 0); }   /* (G_CLOCK is the CLICK setting) */
+void se_click(int accent) { click_on(accent); }
 void se_panic(void) { preview_panic(); }
 
 int se_engine_count(void) { return NENGINES; }
@@ -215,6 +218,16 @@ void se_set_locks(int track, const se_lock_t *locks, int count)
     preview_locks((uint32_t)track, (uint32_t)(count < NLOCK ? count : NLOCK));
 }
 
+void se_set_step_locks(int track, int step, const se_lock_t *locks, int count)
+{
+    int j;
+    if (track < 0 || track >= NTRK || step < 0 || step >= NSTEP) return;
+    lock_del(&trk[track], (uint32_t)step, P_COUNT);
+    for (j = 0; j < count; j++)
+        lock_set(&trk[track], (uint32_t)step, locks[j].param, locks[j].value);
+}
+
+int se_lane_note(int lane) { return lane >= 0 && lane < DRUM_LANES ? LANE_NOTE[lane] : 36; }
 void se_drum_hit(int lane, int velocity)
 {
     if (lane >= 0 && lane < DRUM_LANES) drum_on(LANE_NOTE[lane], (uint32_t)clamp(velocity, 1, 127));

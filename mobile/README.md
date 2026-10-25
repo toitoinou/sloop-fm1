@@ -27,9 +27,11 @@ UI JUCE (thread des messages)                 thread audio
         └──── atomics (clip joué, position) ◄──── │ sloop_engine (C) → 44,1 kHz → rééchantillonné
 ```
 
-- Le moteur de SLOOP ne joue qu'un motif par piste. La Session vit dans l'appli : au début de la dernière
-  étape de chaque boucle, le thread audio écrit dans le moteur le clip suivant (clip lancé, chaîne, arrêt), avec
-  ses probabilités et ses conditions (1:2, 2:2, 1:4, Fill, Sans fill) déjà tirées pour ce tour.
+- Le moteur de SLOOP joue chaque piste en boucle sur ses 64 pas. La Session vit dans l'appli : le thread audio
+  écrit les quelques pas juste devant la tête de lecture, pris dans le clip qui doit jouer là (clip lancé à la
+  mesure, chaîne, arrêt), avec ses probabilités et ses conditions (1:2, 2:2, 1:4, Fill, Sans fill) tirées pour ce
+  tour. Un clip peut donc avoir n'importe quelle longueur (1 à 64 pas), une chaîne peut mélanger les longueurs,
+  et une modification s'entend tout de suite.
 - L'interface ne touche jamais au moteur : elle poste des commandes, le thread audio les applique.
 - Pistes de l'appli : DR (la piste batterie de SLOOP, n° 3) puis T1–T3 (ses parties synthé 0–2).
 
@@ -62,11 +64,19 @@ Le bouton **Projet** (à côté des onglets) ouvre le panneau des projets :
 - **Nouveau** vide la session (deuxième tap pour confirmer) ;
 - **Exporter…** et **Importer…** passent par le sélecteur de fichiers du système (sur Android : Téléchargements,
   Drive, une clé USB…) : un projet est un fichier `.sloop`, du JSON lisible ;
+- **DAW…** exporte la session en [DAWproject](https://github.com/bitwig/dawproject) pour la finir dans Bitwig
+  Studio, Studio One, Cubase… : une piste MIDI par piste, les scènes dans le lanceur de clips (s'il y en a un) et
+  aussi à la suite dans l'arrangement. Les notes telles qu'écrites (les probabilités et les conditions 1:2, 1:4
+  jouent toutes, les pas « Fill » seuls sont laissés de côté), la batterie sur les notes General MIDI (kick 36,
+  snare 38…). Pas de son : ce sont les instruments du DAW qui jouent. Le fichier suit le schéma officiel (vérifié
+  avec `xmllint --schema Project.xsd`) ;
+- **Réglages** : la tonalité et la gamme, le swing, le métronome, le décompte, la quantification de
+  l'enregistrement, le tampon audio ;
 - la session en cours est **gardée toute seule** (quand l'appli passe en arrière-plan, en la quittant, et toutes
   les 30 secondes) et rouverte au prochain lancement.
 
-Un projet garde la session (clips, scènes, pas, conditions, p-locks), le tempo, le son de chaque piste et tous
-ses paramètres. Les fichiers sont dans `userApplicationDataDirectory/SLOOP Touch/` (le dossier privé de l'appli
+Un projet garde la session (clips, scènes, pas, conditions, p-locks), le tempo, le swing, la tonalité, le son de
+chaque piste et tous ses paramètres. Les fichiers sont dans `userApplicationDataDirectory/SLOOP Touch/` (le dossier privé de l'appli
 sur Android, `~/.config/SLOOP Touch/` sous Linux).
 
 ## Le son et la latence
@@ -100,11 +110,17 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [x] Tous les paramètres du son, page par page : Mix, Macro (les quatre principaux du moteur), ses deux pages
   d'édition (OSC, FLT…), l'enveloppe, les envois d'effets. Un pas maintenu verrouille n'importe lequel (p-lock).
 - [x] Enregistrer en jouant sur les pads (Rec pendant la lecture, au pas le plus proche).
-- [ ] Longueur des clips par piste (8 à 64 pas) pour des boucles décalées.
+- [x] Longueur de chaque clip (1 à 64 pas, bouton « 16 pas » de la grille), doubler un clip, boucles décalées.
+- [x] Annuler / refaire (les flèches), copier / coller un clip (appui long dans la Session).
+- [x] Métronome (Clic), décompte d'une mesure quand on enregistre à l'arrêt, swing, quantification de
+  l'enregistrement (sur la grille, ou à sa place entre les pas), « Quantifier » un clip.
+- [x] Tonalité et gamme (11 gammes) ; les Pads d'une piste synthé deviennent un clavier dans la gamme, en quartes,
+  les toniques allumées, avec Oct -/+ et un mode Accords (la triade de la gamme sur chaque pad).
+- [x] Export DAWproject (Bitwig, Studio One, Cubase…).
 - [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
 - [x] Enregistrer ses sessions : projets dans l'appli, sauvegarde automatique, export / import `.sloop`.
 - [x] Notes tenues dans la vue Notes : glisser une note l'allonge (elle tient, au lieu d'être rejouée à chaque pas).
-- [ ] Note repeat, métronome, quantification réglable.
+- [ ] Note repeat, un mixeur, plus de 4 pistes, des samples à soi.
 - [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
 - [ ] Une piste guitare (NAM / TONE3000).
 
