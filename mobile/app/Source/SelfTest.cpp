@@ -83,6 +83,14 @@ int runSelfTest()
     ctl.setKnob (0, defs[0].min + 5);
     check (ctl.editClip()->data.lock (4, SE_P_E0) == defs[0].min + 5, "a held step locks any parameter");
     ctl.held.clear();
+    ctl.setSound (1, 0, 0);                               // ANALOG: four EDIT pages, 16 parameters
+    ctl.setPage (Page::edit4);
+    const auto fenv = ctl.knobDefs();
+    ctl.setKnob (3, 40);
+    check (ctl.pages().size() == 8 && fenv[3].valid && fenv[3].param == SE_P_E0 + 15 && ctl.params[1][(size_t) SE_P_E0 + 15] == 40,
+           "ANALOG's fourth EDIT page (the filter envelope) on the knobs");
+    ctl.setSound (1, 9, 2);
+    check (ctl.page[1] == Page::macro, "an engine without that page: back to its main one");
     ctl.select (0);
 
     // a long note in the piano roll: held over its steps, not played again on each one

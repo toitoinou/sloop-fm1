@@ -117,6 +117,12 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [x] Tonalité et gamme (11 gammes) ; les Pads d'une piste synthé deviennent un clavier dans la gamme, en quartes,
   les toniques allumées, avec Oct -/+ et un mode Accords (la triade de la gamme sur chaque pad).
 - [x] Export DAWproject (Bitwig, Studio One, Cubase…).
+- [x] Les moteurs ont jusqu'à 16 réglages (4 pages d'édition, P_E0..P_E15) : le moteur ne suit plus le FM-1
+  (son firmware n'est plus la référence, seulement la base de départ).
+- [x] **ANALOG** refait façon NoiseMaker : deux oscillateurs chacun sa forme, OCT2, SYNC, sous-oscillateur,
+  bruit ; filtre LP24 (échelle à la Moog, saturée) ou LP12 / BP / HP ; sa propre enveloppe de filtre (F.ATK
+  F.DEC F.SUS F.AMT). 29 presets (les anciens refaits, plus SAW+SUB BS, SYNC LEAD, JUNO PAD, POLY BRASS, SQR SYNC
+  BS, RESO SWEEP, HOOVER). Les projets enregistrés avec l'ancien ANALOG sonnent autrement.
 - [x] Un 13ᵉ moteur, **PLAITS** : le Plaits de Mutable Instruments (MIT, `third_party/plaits`), ses 24 modèles
   (analogique, FM, wavetable, accords, voix, cordes, percussions…) réglés par MODEL, HARM, TIMB, MORPH, plus son
   low-pass gate et son enveloppe ; 27 presets. Quatre voix par piste au plus (le processeur).

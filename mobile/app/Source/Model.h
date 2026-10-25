@@ -113,7 +113,7 @@ struct Clip
 
 // The knobs show four SLOOP parameters at a time (core.h P_*), page by page: the mix, the engine's four main
 // ones (its macros, as the FM-1's HOME knobs), its two EDIT pages, the envelope, the effect sends
-enum class Page { mix, macro, edit1, edit2, env, fx };
+enum class Page { mix, macro, edit1, edit2, edit3, edit4, env, fx };
 struct KnobDef { juce::String label; int param = -1, min = 0, max = 127, def = 0; bool valid = false; };
 constexpr int kParamMute = 40;      // core.h P_MUTE
 

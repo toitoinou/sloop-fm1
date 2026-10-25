@@ -70,7 +70,7 @@ void se_set_sound(int track, int engine, int preset)
     sound_change(t);
     if (t->eng_req != engine) {
         t->eng_req = (uint8_t)engine;
-        for (i = 0; i < 8u; i++) t->p[P_E0 + i] = e->edit[i].def;
+        for (i = 0; i < NEDIT; i++) t->p[P_E0 + i] = e->edit[i].def;
     }
     panic_req |= (uint8_t)(1u << track);
     t->user = 0;
@@ -78,6 +78,7 @@ void se_set_sound(int track, int engine, int preset)
     for (i = 0; i < P_E0; i++)
         if (!se_param_kept(i)) t->p[i] = TP[i].def;
     for (i = 0; i < 8u; i++) t->p[P_E0 + i] = (int16_t)pr->e[i];
+    for (i = 8; i < NEDIT; i++) t->p[P_E0 + i] = (int16_t)(pr->e2set ? pr->e2[i - 8] : e->edit[i].def);
     t->p[P_ATK] = pr->env[0];
     t->p[P_DEC] = pr->env[1];
     t->p[P_SUS] = pr->env[2];
@@ -139,7 +140,8 @@ const char *se_value_name(int engine, int id, int value)
 }
 const char *se_engine_page(int engine, int page)
 {
-    return engine >= 0 && engine < NENGINES && page >= 0 && page < 2 ? ENGINES[engine]->page_title[page] : "";
+    const char *t = engine >= 0 && engine < NENGINES && page >= 0 && page < 4 ? ENGINES[engine]->page_title[page] : 0;
+    return t ? t : "";                          /* (pages 3, 4: only the engines that have them) */
 }
 int se_engine_macro(int engine, int k)
 {

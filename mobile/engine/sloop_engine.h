@@ -58,7 +58,8 @@ enum { SE_P_ATK = 1, SE_P_SUS = 3, SE_P_REL = 4, SE_P_DIST = 33, SE_P_CHOR = 34,
 int se_param_count(void);
 int se_describe(int engine, int id, int *min, int *max, int *def, const char **label);
 const char *se_value_name(int engine, int id, int value);   /* a named value (a wave, a mode), else 0 */
-const char *se_engine_page(int engine, int page);           /* the titles of its two EDIT pages ("OSC", "FLT") */
+const char *se_engine_page(int engine, int page);           /* the titles of its EDIT pages 0..3 ("OSC", "FLT"), "" none */
+enum { SE_EDIT_PARAMS = 16 };                               /* SE_P_E0 .. SE_P_E0 + 15 */
 int se_engine_macro(int engine, int k);                     /* its four main parameters (the FM-1's HOME knobs) */
 void se_params(int track, int16_t *out);                    /* every parameter of a track (audio thread) */
 

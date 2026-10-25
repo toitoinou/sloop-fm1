@@ -87,6 +87,11 @@ public:
     void setSound (int t, int engine, int preset)
     {
         sounds[(size_t) t] = { engine, preset };
+        if (t == sel)                                    // (a page the new engine does not have: its main one)
+        {
+            const auto ps = pages();
+            if (std::find (ps.begin(), ps.end(), page[(size_t) t]) == ps.end()) page[(size_t) t] = Page::macro;
+        }
         if (isDrum (t)) audio.setKit (preset);
         else audio.setSound (t, engine, preset);
         notify();
@@ -377,7 +382,13 @@ public:
     std::vector<Page> pages() const
     {
         if (isDrum (sel)) return { Page::mix, Page::fx };
-        return { Page::mix, Page::macro, Page::edit1, Page::edit2, Page::env, Page::fx };
+        std::vector<Page> p { Page::mix, Page::macro, Page::edit1, Page::edit2 };
+        const int e = sounds[(size_t) sel].engine;           // (pages 3 and 4: the engines that have them)
+        if (*se_engine_page (e, 2)) p.push_back (Page::edit3);
+        if (*se_engine_page (e, 3)) p.push_back (Page::edit4);
+        p.push_back (Page::env);
+        p.push_back (Page::fx);
+        return p;
     }
     juce::String pageName (Page p) const
     {
@@ -388,6 +399,8 @@ public:
             case Page::macro: return "Mac";
             case Page::edit1: return se_engine_page (e, 0);
             case Page::edit2: return se_engine_page (e, 1);
+            case Page::edit3: return se_engine_page (e, 2);
+            case Page::edit4: return se_engine_page (e, 3);
             case Page::env: return "Env";
             case Page::fx: return "FX";
         }
@@ -408,6 +421,8 @@ public:
                 case Page::macro: id = se_engine_macro (e, k); break;
                 case Page::edit1: id = SE_P_E0 + k; break;
                 case Page::edit2: id = SE_P_E0 + 4 + k; break;
+                case Page::edit3: id = SE_P_E0 + 8 + k; break;
+                case Page::edit4: id = SE_P_E0 + 12 + k; break;
                 case Page::env: id = env[k]; break;
                 case Page::fx: id = fx[k]; break;
             }

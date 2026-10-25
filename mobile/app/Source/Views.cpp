@@ -814,19 +814,22 @@ void IconButton::paintButton (juce::Graphics& g, bool over, bool isDown)
 }
 
 // =================================================================== knobs
+// the page tabs: one row, or two when there are many of them for the width (ANALOG's eight on a phone)
+int KnobStrip::pageRows() const { return (int) ctl.pages().size() * 50 > getWidth() - 20 ? 2 : 1; }
 juce::Rectangle<int> KnobStrip::pagesRect() const
 {
-    return getLocalBounds().reduced (10, 8).withTrimmedTop (26).removeFromTop (26);
+    return getLocalBounds().reduced (10, 8).withTrimmedTop (26).removeFromTop (26 * pageRows());
 }
 juce::Rectangle<int> KnobStrip::pageRect (int i) const
 {
     auto r = pagesRect();
-    const int n = (int) ctl.pages().size(), w = r.getWidth() / juce::jmax (1, n);
-    return { r.getX() + i * w, r.getY(), w - 3, r.getHeight() };
+    const int n = (int) ctl.pages().size(), rows = pageRows(), perRow = (n + rows - 1) / rows;
+    const int w = r.getWidth() / juce::jmax (1, perRow);
+    return { r.getX() + (i % perRow) * w, r.getY() + (i / perRow) * 26, w - 3, 24 };
 }
 juce::Rectangle<int> KnobStrip::knobRect (int k) const
 {
-    auto a = getLocalBounds().reduced (10).withTrimmedTop (60);
+    auto a = getLocalBounds().reduced (10).withTrimmedTop (60 + 26 * (pageRows() - 1));
     if (getWidth() < 360 && getHeight() > 200)        // the narrow right column: 2 x 2
     {
         const int w = a.getWidth() / 2, h = juce::jmin (a.getHeight() / 2, w + 20);
@@ -1183,7 +1186,8 @@ void SoundSheet::mouseUp (const juce::MouseEvent& e)
 juce::String engineAbout (const juce::String& name)
 {
     static const std::pair<const char*, const char*> about[] = {
-        { "ANALOG", "Soustractif : deux oscillateurs, du bruit, un filtre qui chante. Basses 808, acid, leads, nappes." },
+        { "ANALOG", "Soustractif : deux oscillateurs (chacun sa forme), sous-oscillateur, sync, filtre 24 dB à la Moog et "
+                    "son enveloppe. Basses 808, acid, leads, nappes." },
         { "DIGITAL", "FM à 4 opérateurs : pianos électriques, cloches, claviers, basses métalliques." },
         { "PHASE", "Distorsion de phase, à la Casio CZ : des sons numériques ronds ou mordants." },
         { "LOFI", "Puce 8 bits : carré, triangle, bruit, onde 4 bits. Les sons des consoles." },

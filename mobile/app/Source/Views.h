@@ -175,6 +175,7 @@ private:
     juce::Rectangle<int> knobRect (int k) const;
     juce::Rectangle<int> titleRect() const { return getLocalBounds().reduced (12, 8).removeFromTop (22); }
     juce::Rectangle<int> pagesRect() const;
+    int pageRows() const;
     juce::Rectangle<int> pageRect (int i) const;
     int knobAt (juce::Point<int>) const;
     Controller& ctl;

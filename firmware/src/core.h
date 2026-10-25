@@ -75,6 +75,7 @@ enum {                          /* per-track parameters */
     P_ESYNC,                                   /* ENV SYNC: ATK DEC REL as note values of the tempo (voice.c) */
     P_LSYNC, P_LTRIG, P_LPOL,                  /* LFO 2: SYNC to the tempo, TRIG (NOTE / FREE), POL (BI / UNI) (voice.c) */
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
+    P_E8, P_E9, P_E10, P_E11, P_E12, P_E13, P_E14, P_E15,   /* SLOOP Touch: 16 engine parameters, 4 EDIT pages */
     P_COUNT
 };
 
@@ -140,6 +141,7 @@ typedef struct {                 /* per-voice control-rate modulation, computed 
                                   * fraction (1/4096); FM6 reads it (the others take inc) */
 } vmod_t;
 
+#define NEDIT 16u                /* an engine's own parameters, P_E0..P_E15 (SLOOP Touch; the FM-1: 8) */
 typedef struct {
     const char *name;
     int8_t e[8];                 /* P_E0..P_E7 (signed: an interval below the note; every value fits) */
@@ -152,7 +154,10 @@ typedef struct {
     uint8_t pat;                 /* sequence pattern (PATTERNS[pat - 1]), loaded only into an empty sequencer */
     int8_t x[8];                 /* more of the patch: up to 4 (track parameter id + 1, value) pairs, 0 = none
                                   * (glide, pitch / LFO modulation, voice mode...: preset_extras) */
+    uint8_t e2set;               /* SLOOP Touch: e2 holds P_E8..P_E15 (else their defaults) */
+    int8_t e2[8];
 } preset_t;
+#define E2(...) .e2set = 1, .e2 = {__VA_ARGS__}
 #define FX(d, c, dl, r) .fx = {(d) + 1, (c) + 1, (dl) + 1, (r) + 1}
 #define ARP(m, rt, o, g) .arp = {(m) + 1, (rt) + 1, (o) + 1, (g) + 1}
 #define PAT(n) .pat = (n)
@@ -161,8 +166,8 @@ typedef struct {
 struct track;
 typedef struct {
     const char *name;            /* "VA" */
-    const char *page_title[2];
-    param_desc_t edit[8];        /* P_E0..P_E7 */
+    const char *page_title[4];   /* its EDIT pages, four parameters each (SLOOP Touch: up to 4) */
+    param_desc_t edit[NEDIT];    /* P_E0..P_E15 */
     const preset_t *presets;
     uint8_t npresets;
     int8_t fil_page;             /* EDIT page that holds the filter, -1 = none */
@@ -318,7 +323,7 @@ typedef struct track {
     int16_t armp, aholdp;        /* P_AMODE / P_AHOLD as last seen by the ISR */
     /* engine switch (voice.c engine_block): the old engine's voices fade out, then it switches */
     uint8_t xf_on, xf;           /* fading; blocks of the fade still to render */
-    int16_t pe_old[8];           /* P_E0..P_E7 of the sounding engine: the fade renders with these */
+    int16_t pe_old[NEDIT];       /* P_E0..P_E15 of the sounding engine: the fade renders with these */
     int16_t p_old[P_COUNT];      /* 2.6: the whole sound before a preset loaded (voice.c sound_change): the fade's */
     uint8_t pold;                /* 1: a preset loaded, the sounding voices fade out with p_old first */
     uint16_t ins_res;            /* 2.6: |the INSERT's last output| (fx.c: its tail runs until it is ~0) */

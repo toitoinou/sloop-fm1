@@ -903,7 +903,7 @@ static int project_empty(void)
 static int p_lockable(uint32_t id)
 {
     return id <= P_LD_AMP || id == P_SGATE || (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN ||
-           id == P_DETUNE || (id >= P_SLCR && id <= P_SLDEPTH) || (id >= P_E0 && id <= P_E7) || id == P_TFLT ||
+           id == P_DETUNE || (id >= P_SLCR && id <= P_SLDEPTH) || (id >= P_E0 && id <= P_E15) || id == P_TFLT ||
            (id >= P_IA && id <= P_IMIX);   /* 2.6: the INSERT's values and MIX */
 }
 /* the range of p[id] on track t (the engine that renders: t->engine; the drum track's P_E0: the kit) */
@@ -911,7 +911,7 @@ static const param_desc_t *lock_desc(const track_t *t, uint32_t id)
 {
     if (is_drum(t) && id == P_E0)
         return &DRUM_KIT_DESC;
-    if (id >= P_E0 && id <= P_E7)
+    if (id >= P_E0 && id <= P_E15)
         return &ENGINES[t->engine % NENGINES]->edit[id - P_E0];
     return &TP[id % P_COUNT];
 }
@@ -2693,13 +2693,13 @@ static const uint8_t MIDI_CC_MAP[][2] = {
  * 96..101, 120..127 the channel modes) are never learned. The UI (ui_input.c ml_*) writes the entries with the
  * interrupts off; ml_arm / ml_heard hand it a CC heard while learning */
 #define ML_N 16u
-#define ML_E0 120u
-_Static_assert(P_E0 < ML_E0 && P_COUNT - P_E0 == 8, "MIDI LEARN: a code per parameter");
+#define ML_E0 110u                  /* (SLOOP Touch: 16 engine parameters, the codes still fit 7 bits) */
+_Static_assert(P_E0 < ML_E0 && P_COUNT - P_E0 == NEDIT && ML_E0 + NEDIT <= 128u, "MIDI LEARN: a code per parameter");
 static volatile uint16_t ml_tab[ML_N];
 static volatile uint8_t ml_arm, ml_heard;  /* the UI waits for a CC; the CC that came meanwhile + 1 (0 none) */
 static uint32_t ml_id(uint32_t code)        /* an entry's code -> P_* id, P_COUNT: none this firmware knows */
 {
-    return code >= ML_E0 ? (code - ML_E0 < 8u ? P_E0 + code - ML_E0 : P_COUNT) : code && code <= P_E0 ? code - 1u : P_COUNT;
+    return code >= ML_E0 ? (code - ML_E0 < NEDIT ? P_E0 + code - ML_E0 : P_COUNT) : code && code <= P_E0 ? code - 1u : P_COUNT;
 }
 static int ml_free_cc(uint32_t cc)
 {
@@ -2725,7 +2725,7 @@ static void sus_set(track_t *t, int on)
 static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
 {
     const param_desc_t *d = is_drum(t) && id == P_E0 ? &DRUM_KIT_DESC
-                            : id >= P_E0 ? &ENGINES[t->eng_req % NENGINES]->edit[(id - P_E0) & 7u] : &TP[id % P_COUNT];
+                            : id >= P_E0 ? &ENGINES[t->eng_req % NENGINES]->edit[(id - P_E0) % NEDIT] : &TP[id % P_COUNT];
     if (d->max > d->min)
         t->p[id % P_COUNT] = (int16_t)(d->min + ((int32_t)(value & 127u) * (d->max - d->min) + 63) / 127);
 }
