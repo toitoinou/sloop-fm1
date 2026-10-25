@@ -1139,7 +1139,9 @@ void SoundSheet::resized()
     if (! engineButtons.isEmpty())
     {
         auto row = p.removeFromTop (40);
-        p.removeFromTop (10);
+        p.removeFromTop (4);
+        about = p.removeFromTop (34);                 // what the engine is (paint)
+        p.removeFromTop (6);
         engineView.setBounds (row);
         const int w = 100;
         engineRow.setSize (w * engineButtons.size(), row.getHeight());
@@ -1165,10 +1167,40 @@ void SoundSheet::paint (juce::Graphics& g)
     g.drawText (juce::String::fromUTF8 ("Son · ") + kTrackIds[ctl.sel] + " " + kTrackNames[ctl.sel]
                     + (isDrum (ctl.sel) ? juce::String::fromUTF8 ("  ·  kit") : juce::String()),
                 title.withTrimmedLeft (12), juce::Justification::centredLeft);
+    if (! isDrum (ctl.sel) && ! about.isEmpty())
+    {
+        g.setColour (theme::dim);
+        g.setFont (font (12.5f));
+        g.drawFittedText (engineAbout (se_engine_name (engineShown)), about, juce::Justification::centredLeft, 2);
+    }
 }
 void SoundSheet::mouseUp (const juce::MouseEvent& e)
 {
     if (! panel().contains (e.getPosition())) onClose();
+}
+
+// what each engine is, in a line (the sound sheet), by its name
+juce::String engineAbout (const juce::String& name)
+{
+    static const std::pair<const char*, const char*> about[] = {
+        { "ANALOG", "Soustractif : deux oscillateurs, du bruit, un filtre qui chante. Basses 808, acid, leads, nappes." },
+        { "DIGITAL", "FM à 4 opérateurs : pianos électriques, cloches, claviers, basses métalliques." },
+        { "PHASE", "Distorsion de phase, à la Casio CZ : des sons numériques ronds ou mordants." },
+        { "LOFI", "Puce 8 bits : carré, triangle, bruit, onde 4 bits. Les sons des consoles." },
+        { "SAMPLE", "Des instruments enregistrés (piano, contrebasse, cuivres, cordes...) joués au clavier." },
+        { "VOICE", "Des voyelles chantées (formants) : chœurs, talkbox, robot." },
+        { "TRIO", "Trois oscillateurs, ring mod et sync, un filtre : les puces des ordinateurs 8 bits, les stabs rave." },
+        { "WHEEL", "Orgue à roues phoniques : tirettes, percussion, cabine tournante." },
+        { "GRAIN", "Granulaire sur les sons enregistrés : nuages, textures, nappes figées." },
+        { "FM6", "FM à 6 opérateurs, à la DX7 (le cœur de Dexed) : les classiques des années 80." },
+        { "PHYS", "Modèles physiques (Rings) : cordes pincées ou frottées, cloches, percussions." },
+        { "NOISE", "Des bruits filtrés : vent, pluie, vinyle, montées, effets." },
+        { "PLAITS", "Mutable Instruments Plaits : 24 modèles (analogique, FM, wavetable, accords, voix, cordes, percussions) "
+                    "réglés par 4 macros : MODEL, HARM, TIMB, MORPH." },
+    };
+    for (auto& [n, text] : about)
+        if (name == n) return juce::String::fromUTF8 (text);
+    return {};
 }
 
 // =================================================================== the settings

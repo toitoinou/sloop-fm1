@@ -117,6 +117,9 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [x] Tonalité et gamme (11 gammes) ; les Pads d'une piste synthé deviennent un clavier dans la gamme, en quartes,
   les toniques allumées, avec Oct -/+ et un mode Accords (la triade de la gamme sur chaque pad).
 - [x] Export DAWproject (Bitwig, Studio One, Cubase…).
+- [x] Un 13ᵉ moteur, **PLAITS** : le Plaits de Mutable Instruments (MIT, `third_party/plaits`), ses 24 modèles
+  (analogique, FM, wavetable, accords, voix, cordes, percussions…) réglés par MODEL, HARM, TIMB, MORPH, plus son
+  low-pass gate et son enveloppe ; 27 presets. Quatre voix par piste au plus (le processeur).
 - [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
 - [x] Enregistrer ses sessions : projets dans l'appli, sauvegarde automatique, export / import `.sloop`.
 - [x] Notes tenues dans la vue Notes : glisser une note l'allonge (elle tient, au lieu d'être rejouée à chaque pas).

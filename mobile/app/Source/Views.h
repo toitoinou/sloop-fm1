@@ -222,6 +222,7 @@ private:
     Controller& ctl;
     std::function<void()> onClose;
     int engineShown = 0;
+    juce::Rectangle<int> about;                      // the engine's line
     juce::Component engineRow, itemGrid;
     juce::Viewport engineView, itemView;
     juce::OwnedArray<juce::TextButton> engineButtons, itemButtons;
@@ -258,6 +259,8 @@ private:
     };
     juce::OwnedArray<Label> labels;
 };
+
+juce::String engineAbout (const juce::String& engineName);   // an engine in a line
 
 // a button that is on only while a finger holds it (FILL)
 class HoldButton : public juce::TextButton

@@ -255,6 +255,29 @@ int runSelfTest()
     ctl.togglePlay();
     run (0.1);
     check (! audio.running.load(), "the transport stops");
+
+    // PLAITS (Mutable Instruments' Plaits): every model sounds from the keyboard (the song stopped)
+    {
+        const int plaits = se_engine_count() - 1;
+        int silent = 0;
+        ctl.setSound (2, plaits, 0);                     // T2: VA LEAD, then each model
+        for (int model = 0; model < 24; ++model)
+        {
+            ctl.audio.setParam (2, SE_P_E0, model);
+            double mark = energy;
+            run (0.25);
+            const double quiet = energy - mark;          // (what still rings from before)
+            mark = energy;
+            ctl.audio.note (2, 60, true);
+            run (0.25);
+            ctl.audio.note (2, 60, false);
+            if (energy - mark < quiet * 2.0 + 1.0) { ++silent; std::printf ("      model %d: %.2f / %.2f\n", model, energy - mark, quiet); }
+            run (0.5);
+        }
+        check (juce::String (se_engine_name (plaits)) == "PLAITS" && silent == 0, "PLAITS: its 24 models all sound");
+        ctl.setSound (2, 1, 0);
+    }
+
     std::printf ("%s\n", failures == 0 ? "self-test passed" : "self-test FAILED");
     return failures == 0 ? 0 : 1;
 }

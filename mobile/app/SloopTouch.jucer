@@ -32,6 +32,49 @@
     <GROUP id="Gr00p2" name="Engine">
       <FILE id="Fi0011" name="sloop_engine.h" compile="0" resource="0" file="../engine/sloop_engine.h"/>
       <FILE id="Fi0012" name="sloop_engine.c" compile="1" resource="0" file="../engine/sloop_engine.c"/>
+      <FILE id="Fi0020" name="plaits_glue.cc" compile="1" resource="0" file="../engine/plaits_glue.cc"/>
+      <FILE id="Fi0021" name="eng_plaits.c" compile="0" resource="0" file="../engine/eng_plaits.c"/>
+    </GROUP>
+    <GROUP id="Gr00p3" name="Plaits">
+      <FILE id="Fi0022" name="chord_bank.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/chords/chord_bank.cc"/>
+      <FILE id="Fi0023" name="additive_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/additive_engine.cc"/>
+      <FILE id="Fi0024" name="bass_drum_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/bass_drum_engine.cc"/>
+      <FILE id="Fi0025" name="chord_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/chord_engine.cc"/>
+      <FILE id="Fi0026" name="fm_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/fm_engine.cc"/>
+      <FILE id="Fi0027" name="grain_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/grain_engine.cc"/>
+      <FILE id="Fi0028" name="hi_hat_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/hi_hat_engine.cc"/>
+      <FILE id="Fi0029" name="modal_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/modal_engine.cc"/>
+      <FILE id="Fi0030" name="noise_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/noise_engine.cc"/>
+      <FILE id="Fi0031" name="particle_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/particle_engine.cc"/>
+      <FILE id="Fi0032" name="snare_drum_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/snare_drum_engine.cc"/>
+      <FILE id="Fi0033" name="speech_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/speech_engine.cc"/>
+      <FILE id="Fi0034" name="string_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/string_engine.cc"/>
+      <FILE id="Fi0035" name="swarm_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/swarm_engine.cc"/>
+      <FILE id="Fi0036" name="virtual_analog_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/virtual_analog_engine.cc"/>
+      <FILE id="Fi0037" name="waveshaping_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/waveshaping_engine.cc"/>
+      <FILE id="Fi0038" name="wavetable_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/wavetable_engine.cc"/>
+      <FILE id="Fi0039" name="chiptune_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/chiptune_engine.cc"/>
+      <FILE id="Fi0040" name="phase_distortion_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/phase_distortion_engine.cc"/>
+      <FILE id="Fi0041" name="six_op_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/six_op_engine.cc"/>
+      <FILE id="Fi0042" name="string_machine_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/string_machine_engine.cc"/>
+      <FILE id="Fi0043" name="virtual_analog_vcf_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/virtual_analog_vcf_engine.cc"/>
+      <FILE id="Fi0044" name="wave_terrain_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/wave_terrain_engine.cc"/>
+      <FILE id="Fi0045" name="algorithms.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/fm/algorithms.cc"/>
+      <FILE id="Fi0046" name="dx_units.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/fm/dx_units.cc"/>
+      <FILE id="Fi0047" name="modal_voice.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/modal_voice.cc"/>
+      <FILE id="Fi0048" name="resonator.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/resonator.cc"/>
+      <FILE id="Fi0049" name="string.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/string.cc"/>
+      <FILE id="Fi0050" name="string_voice.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/string_voice.cc"/>
+      <FILE id="Fi0051" name="lpc_speech_synth.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth.cc"/>
+      <FILE id="Fi0052" name="lpc_speech_synth_controller.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth_controller.cc"/>
+      <FILE id="Fi0053" name="lpc_speech_synth_phonemes.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth_phonemes.cc"/>
+      <FILE id="Fi0054" name="lpc_speech_synth_words.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth_words.cc"/>
+      <FILE id="Fi0055" name="naive_speech_synth.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/naive_speech_synth.cc"/>
+      <FILE id="Fi0056" name="sam_speech_synth.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/sam_speech_synth.cc"/>
+      <FILE id="Fi0057" name="voice.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/voice.cc"/>
+      <FILE id="Fi0058" name="resources.cc" compile="1" resource="0" file="../third_party/plaits/plaits/resources.cc"/>
+      <FILE id="Fi0059" name="units.cc" compile="1" resource="0" file="../third_party/plaits/stmlib/dsp/units.cc"/>
+      <FILE id="Fi0060" name="random.cc" compile="1" resource="0" file="../third_party/plaits/stmlib/utils/random.cc"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
@@ -54,9 +97,9 @@
                    extraCompilerFlags="-fwrapv -fno-strict-aliasing">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" optimisation="1"
-                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src"/>
+                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src&#10;../../../third_party/plaits"/>
         <CONFIGURATION isDebug="0" name="Release" optimisation="3"
-                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src"/>
+                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src&#10;../../../third_party/plaits"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path="JUCE/modules"/>

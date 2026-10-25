@@ -79,6 +79,9 @@ static int phys_render_draws(const track_t *t, int32_t model)   /* model: the MO
 #if FELUCCA_SLICE
 #include "eng_slice.c"
 #endif
+#if FELUCCA_PLAITS
+#include "eng_plaits.c"         /* PLAITS: Mutable Instruments' Plaits (MIT), the mobile app's (mobile/engine) */
+#endif
 
 static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &ENG_PHASE, &ENG_LOFI, &ENG_SAMPLE,
                                                     &ENG_FORMANT, &ENG_TRIO, &ENG_DRAWBAR,   /* 7: ENGI_DRAWBAR (eng_drawbar.c) */
@@ -87,6 +90,9 @@ static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &EN
                                                     &ENG_PHYS, &ENG_NOISE,
 #if FELUCCA_SLICE
                                                     &ENG_SLICE,
+#endif
+#if FELUCCA_PLAITS
+                                                    &ENG_PLAITS,
 #endif
 };
 _Static_assert(ENGI_FM6 == 9u, "ENGINES[ENGI_FM6] is FM6");

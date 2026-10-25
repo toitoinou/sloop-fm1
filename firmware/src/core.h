@@ -20,11 +20,15 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 /* SLOOP 2.4: FM6 (eng_fm6.c) is engine 9 in every build; SLICE, when built, comes last (10). Projects and user
  * presets store the engine index as a byte, and no shipped SLOOP was built with SLICE, so its number is stored
  * nowhere: FM6 may take 9 and SLICE moves up (engines.c ENGINES[], params.c N_ENGNAME follow this order) */
-#define NENGINES (12 + FELUCCA_SLICE)
+#ifndef FELUCCA_PLAITS
+#define FELUCCA_PLAITS 0         /* PLAITS (mobile/engine/eng_plaits.c, Mutable Instruments' Plaits): the mobile app only */
+#endif
+#define NENGINES (12 + FELUCCA_SLICE + FELUCCA_PLAITS)
 #define ENGI_GRAIN 8u            /* GRAIN, PHYS, NOISE (SLOOP 2.5, appended after FM6: the stores keep the numbers) */
 #define ENGI_PHYS 10u
 #define ENGI_NOISE 11u
 #define ENGI_SLICE 12u           /* with FELUCCA_SLICE: after NOISE */
+#define ENGI_PLAITS (12u + FELUCCA_SLICE)   /* with FELUCCA_PLAITS: last */
 #define ENGI_FM6 9u              /* the FM6 engine's index (eng_fm6.c, the stores: append-only) */
 #define UP_SLOTS 32u             /* user presets (upreset.c) */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))

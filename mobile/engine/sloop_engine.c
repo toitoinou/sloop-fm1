@@ -2,6 +2,7 @@
 /* SLOOP's engine for the mobile app: firmware/host/preview.c (the firmware's DSP and clock, hardware replaced by
  * RAM) in one translation unit, and the calls of sloop_engine.h on top of it. The generated tables
  * (felucca_tables.h and the others) come from mobile/tools/gen_engine_tables.sh. */
+#define FELUCCA_PLAITS 1                        /* the PLAITS engine (eng_plaits.c), the app's own */
 #include "../../firmware/host/preview.c"
 #include "sloop_engine.h"
 
@@ -14,6 +15,7 @@ _Static_assert(SE_DRUM == TRK_DRUM && SE_TRACKS == NTRK && SE_LANES == DRUM_LANE
 
 void se_init(void)
 {
+    plaits_init();                  /* (the PLAITS voices, allocated once here, not on the audio thread) */
     preview_init();
     preview_render();               /* as the web preview: the first block sets the engine's buffers up */
 }
