@@ -761,7 +761,7 @@ void PadsView::mouseDown (const juce::MouseEvent& e)
     const float cell = (float) a.getHeight() / 4.0f, y = (float) (e.getPosition().y - a.getY()) - (float) (pad / cols()) * cell;
     const float vel = juce::jlimit (0.25f, 1.0f, 1.0f - y / cell * 0.75f);   // higher on the pad, harder
     const int v = (int) (vel * 127);
-    Down d { pad, vel, {}, ctl.sel };
+    Down d { pad, vel, {}, {}, ctl.sel };
     if (drum)
     {
         const int snd = padSound (pad);
@@ -774,6 +774,7 @@ void PadsView::mouseDown (const juce::MouseEvent& e)
         for (int row : padRows (pad))
         {
             d.notes.push_back (ctl.note (ctl.sel, row));
+            d.rows.push_back (row);
             ctl.audio.note (ctl.sel, d.notes.back(), true);
             ctl.recordHit (row, v);
         }
@@ -787,6 +788,7 @@ void PadsView::mouseUp (const juce::MouseEvent& e)
     auto it = down.find (e.source.getIndex());
     if (it == down.end()) return;
     for (int n : it->second.notes) ctl.audio.note (it->second.track, n, false);
+    for (int r : it->second.rows) ctl.recordRelease (it->second.track, r);   // (recording: the note's length)
     down.erase (it);
     repaint();
 }
@@ -854,11 +856,19 @@ void KnobStrip::paint (juce::Graphics& g)
     g.setColour (theme::fg);
     g.setFont (font (16.0f, true));
     const auto& snd = ctl.sounds[(size_t) ctl.sel];
-    juce::String name = juce::String (kTrackIds[ctl.sel]) + juce::String::fromUTF8 (" · ")
-                        + (isDrum (ctl.sel) ? se_kit_name (snd.preset) : se_preset_name (snd.engine, snd.preset));
+    juce::String name = isDrum (ctl.sel) ? se_kit_name (snd.preset) : se_preset_name (snd.engine, snd.preset);
     if (! ctl.held.empty()) name << juce::String::fromUTF8 (" · pas ") << (ctl.held.front().second + 1);
     else name << juce::String::fromUTF8 ("  ▾");
-    g.drawText (name, title.withTrimmedLeft (10), juce::Justification::centredLeft, true);
+    g.drawText (name, title.withTrimmedLeft (10).withRight (soundArrow (0).getX() - 4), juce::Justification::centredLeft, true);
+    for (int i = 0; i < 2; ++i)                         // < >: the sound before / after, without the sheet
+    {
+        auto r = soundArrow (i).toFloat();
+        g.setColour (theme::cellBeat);
+        g.fillRoundedRectangle (r, theme::radius);
+        g.setColour (theme::fg);
+        g.setFont (font (14.0f, true));
+        g.drawText (i == 0 ? "<" : ">", r, juce::Justification::centred);
+    }
 
     const auto pages = ctl.pages();
     for (int i = 0; i < (int) pages.size(); ++i)
@@ -912,6 +922,8 @@ void KnobStrip::paint (juce::Graphics& g)
 }
 void KnobStrip::mouseDown (const juce::MouseEvent& e)
 {
+    for (int i = 0; i < 2; ++i)
+        if (soundArrow (i).contains (e.getPosition()) && ctl.held.empty()) { stepSound (ctl, i == 0 ? -1 : 1); return; }
     if (titleRect().contains (e.getPosition()) && ctl.held.empty()) { if (onSound) onSound(); return; }
     const auto pages = ctl.pages();
     for (int i = 0; i < (int) pages.size(); ++i)
@@ -919,6 +931,7 @@ void KnobStrip::mouseDown (const juce::MouseEvent& e)
     Drag d;
     d.k = knobAt (e.getPosition());
     d.y = (float) e.getPosition().y;
+    d.x = (float) e.getPosition().x;
     if (d.k >= 0 && ! ctl.knobDefs()[(size_t) d.k].valid) d.k = -1;
     if (d.k >= 0) d.value = (float) ctl.knob (d.k);
     drags[e.source.getIndex()] = d;
@@ -929,14 +942,18 @@ void KnobStrip::mouseDrag (const juce::MouseEvent& e)
     if (it == drags.end() || it->second.k < 0) return;
     auto& d = it->second;
     const auto def = ctl.knobDefs()[(size_t) d.k];
-    const float dy = d.y - (float) e.getPosition().y;
+    // up or right turns it up: the whole range in about 150 points (a short swipe); a short range (a wave, a mode:
+    // a few values) one value per 24 points; a second finger on the strip: four times finer
+    const float dy = d.y - (float) e.getPosition().y, dx = (float) e.getPosition().x - d.x;
     d.y = (float) e.getPosition().y;
-    d.moved += std::abs (dy);
+    d.x = (float) e.getPosition().x;
+    const float delta = std::abs (dy) >= std::abs (dx) ? dy : dx;
+    d.moved += std::abs (delta);
     if (d.moved < 3) return;
-    const bool fine = drags.size() > 1;                  // a second finger on the strip: fine adjustment
-    // a short range (a wave, a mode: a few values) moves slower: one value per 18 points or so
-    const float span = (float) (def.max - def.min), travel = juce::jmax (fine ? 1000.0f : 180.0f, span * 18.0f);
-    d.value += dy * span / travel;
+    const bool fine = drags.size() > 1;
+    const float span = (float) (def.max - def.min);
+    const float travel = (span <= 12.0f ? span * 24.0f : 150.0f) * (fine ? 4.0f : 1.0f);
+    d.value += delta * span / travel;
     d.value = juce::jlimit ((float) def.min, (float) def.max, d.value);
     ctl.setKnob (d.k, juce::roundToInt (d.value));
 }
@@ -1052,100 +1069,7 @@ void StepSheet::mouseUp (const juce::MouseEvent& e)
 }
 
 // =================================================================== the sound sheet
-SoundSheet::SoundSheet (Controller& c, std::function<void()> close) : ctl (c), onClose (std::move (close))
-{
-    engineView.setViewedComponent (&engineRow, false);
-    engineView.setScrollBarsShown (false, false, false, true);
-    engineView.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
-    itemView.setViewedComponent (&itemGrid, false);
-    itemView.setScrollBarsShown (false, false, true, false);
-    itemView.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
-    addAndMakeVisible (itemView);
-    addAndMakeVisible (ok);
-    ok.onClick = [this] { onClose(); };
-    if (! isDrum (ctl.sel))
-    {
-        addAndMakeVisible (engineView);
-        for (int k = 0; k < soundCategoryCount(); ++k)   // first the kinds of sound, from every engine
-        {
-            auto* b = categoryButtons.add (new juce::TextButton (soundCategoryName (k)));
-            b->setColour (juce::TextButton::buttonColourId, theme::cellBeat);
-            b->onClick = [this, k] { showCategory (k); };
-            engineRow.addAndMakeVisible (b);
-        }
-        for (int e = 0; e < se_engine_count(); ++e)
-        {
-            auto* b = engineButtons.add (new juce::TextButton (se_engine_name (e)));
-            b->onClick = [this, e] { showEngine (e); };
-            engineRow.addAndMakeVisible (b);
-        }
-        showEngine (ctl.sounds[(size_t) ctl.sel].engine);
-    }
-    else
-    {
-        for (int k = 0; k < se_kit_count(); ++k)
-        {
-            const juce::String name (se_kit_name (k));
-            if (name.startsWith ("USR")) continue;    // the user sample slots: nothing loaded in the app yet
-            auto* b = itemButtons.add (new juce::TextButton (name));
-            itemIds.add (k);
-            b->onClick = [this, k] { ctl.setSound (0, -1, k); sync(); audition(); };
-            itemGrid.addAndMakeVisible (b);
-        }
-        sync();
-    }
-}
-void SoundSheet::showCategory (int category)
-{
-    categoryShown = category;
-    itemButtons.clear();
-    itemIds.clear();
-    itemEngines.clear();
-    for (int e = 0; e < se_engine_count(); ++e)
-        for (int p = 0; p < se_preset_count (e); ++p)
-            if (soundCategory (se_preset_name (e, p)) == category)
-            {
-                auto* b = itemButtons.add (new juce::TextButton (juce::String (se_preset_name (e, p)) + juce::String::fromUTF8 ("  ·  ")
-                                                                 + se_engine_name (e)));
-                itemIds.add (p);
-                itemEngines.add (e);
-                b->onClick = [this, e, p] { ctl.setSound (ctl.sel, e, p); sync(); audition(); };
-                itemGrid.addAndMakeVisible (b);
-            }
-    sync();
-    resized();
-}
-void SoundSheet::showEngine (int engine)
-{
-    engineShown = engine;
-    categoryShown = -1;
-    itemButtons.clear();
-    itemIds.clear();
-    itemEngines.clear();
-    for (int p = 0; p < se_preset_count (engine); ++p)
-    {
-        auto* b = itemButtons.add (new juce::TextButton (se_preset_name (engine, p)));
-        itemIds.add (p);
-        itemEngines.add (engine);
-        b->onClick = [this, engine, p] { ctl.setSound (ctl.sel, engine, p); sync(); audition(); };
-        itemGrid.addAndMakeVisible (b);
-    }
-    sync();
-    resized();
-}
-void SoundSheet::sync()
-{
-    const auto& s = ctl.sounds[(size_t) ctl.sel];
-    for (int c = 0; c < categoryButtons.size(); ++c)
-        categoryButtons[c]->setToggleState (c == categoryShown, juce::dontSendNotification);
-    for (int e = 0; e < engineButtons.size(); ++e)
-        engineButtons[e]->setToggleState (categoryShown < 0 && e == engineShown, juce::dontSendNotification);
-    for (int i = 0; i < itemButtons.size(); ++i)
-        itemButtons[i]->setToggleState ((isDrum (ctl.sel) || itemEngines[i] == s.engine) && itemIds[i] == s.preset,
-                                        juce::dontSendNotification);
-    repaint();
-}
-void SoundSheet::audition()
+void auditionSound (Controller& ctl)
 {
     auto* a = &ctl.audio;
     if (isDrum (ctl.sel))
@@ -1159,68 +1083,203 @@ void SoundSheet::audition()
     a->note (t, note, true);
     juce::Timer::callAfterDelay (450, [a, t, note] { a->note (t, note, false); });
 }
-juce::Rectangle<int> SoundSheet::panel() const
+void stepSound (Controller& ctl, int direction)
 {
-    const int w = juce::jmin (getWidth(), 760), h = juce::jmin (getHeight() - 24, 560);
-    return { (getWidth() - w) / 2, getHeight() - h, w, h };
+    const auto snd = ctl.sounds[(size_t) ctl.sel];
+    if (isDrum (ctl.sel))
+    {
+        int k = snd.preset;
+        for (int i = 0; i < se_kit_count(); ++i)          // (the user sample kits are empty in the app: skipped)
+        {
+            k = (k + direction + se_kit_count()) % se_kit_count();
+            if (! juce::String (se_kit_name (k)).startsWith ("USR")) break;
+        }
+        ctl.setSound (0, -1, k);
+    }
+    else
+    {
+        const int n = juce::jmax (1, se_preset_count (snd.engine));
+        ctl.setSound (ctl.sel, snd.engine, (snd.preset + direction + n) % n);
+    }
+    auditionSound (ctl);
+}
+
+SoundSheet::SoundSheet (Controller& c, std::function<void()> close) : ctl (c), onClose (std::move (close))
+{
+    listView.setViewedComponent (&list, false);
+    gridView.setViewedComponent (&grid, false);
+    for (auto* v : { &listView, &gridView })
+    {
+        v->setScrollBarsShown (false, false, true, false);
+        v->setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
+        addAndMakeVisible (v);
+    }
+    for (auto* b : { &prev, &next, &ok }) addAndMakeVisible (b);
+    ok.setToggleState (true, juce::dontSendNotification);
+    ok.onClick = [this] { onClose(); };
+    prev.onClick = [this] { if (! items.empty()) pick (current() < 0 ? 0 : (current() + (int) items.size() - 1) % (int) items.size()); };
+    next.onClick = [this] { if (! items.empty()) pick (current() < 0 ? 0 : (current() + 1) % (int) items.size()); };
+    if (isDrum (ctl.sel))
+    {
+        listView.setVisible (false);
+        for (int k = 0; k < se_kit_count(); ++k)
+            if (! juce::String (se_kit_name (k)).startsWith ("USR"))   // (the user sample slots: nothing in the app yet)
+                items.push_back ({ -1, k });
+    }
+    else
+    {
+        rows.push_back ({ "TYPE DE SON", 0, -1 });
+        for (int k = 0; k < soundCategoryCount(); ++k) rows.push_back ({ soundCategoryName (k), 1, k });
+        rows.push_back ({ "MOTEUR", 0, -1 });
+        for (int e = 0; e < se_engine_count(); ++e) rows.push_back ({ se_engine_name (e), 2, e });
+        showEngine (ctl.sounds[(size_t) ctl.sel].engine);
+    }
+}
+void SoundSheet::showEngine (int engine)
+{
+    engineShown = engine;
+    categoryShown = -1;
+    items.clear();
+    for (int p = 0; p < se_preset_count (engine); ++p) items.push_back ({ engine, p });
+    resized();
+    repaint();
+}
+void SoundSheet::showCategory (int category)
+{
+    categoryShown = category;
+    items.clear();
+    for (int e = 0; e < se_engine_count(); ++e)
+        for (int p = 0; p < se_preset_count (e); ++p)
+            if (soundCategory (se_preset_name (e, p)) == category) items.push_back ({ e, p });
+    resized();
+    repaint();
+}
+int SoundSheet::current() const
+{
+    const auto snd = ctl.sounds[(size_t) ctl.sel];
+    for (size_t i = 0; i < items.size(); ++i)
+        if ((isDrum (ctl.sel) || items[i].engine == snd.engine) && items[i].preset == snd.preset) return (int) i;
+    return -1;
+}
+void SoundSheet::pick (int index)
+{
+    if (index < 0 || index >= (int) items.size()) return;
+    const auto it = items[(size_t) index];
+    ctl.setSound (ctl.sel, it.engine, it.preset);
+    auditionSound (ctl);
+    // (the tile in sight)
+    const auto r = grid.tile (index);
+    if (r.getY() < gridView.getViewPositionY() || r.getBottom() > gridView.getViewPositionY() + gridView.getHeight())
+        gridView.setViewPosition (0, juce::jmax (0, r.getY() - tileH));
+    repaint();
+    grid.repaint();
 }
 void SoundSheet::resized()
 {
-    auto p = panel().reduced (16);
-    p.removeFromTop (34);
-    auto bottom = p.removeFromBottom (44);
-    ok.setBounds (bottom.removeFromRight (90));
-    p.removeFromBottom (8);
-    if (! engineButtons.isEmpty())
+    auto r = getLocalBounds().reduced (10, 8);
+    auto top = r.removeFromTop (44);
+    ok.setBounds (top.removeFromRight (80)); top.removeFromRight (8);
+    next.setBounds (top.removeFromRight (52)); top.removeFromRight (6);
+    prev.setBounds (top.removeFromRight (52));
+    r.removeFromTop (8);
+    if (listView.isVisible())
     {
-        auto row = p.removeFromTop (40);
-        p.removeFromTop (4);
-        about = p.removeFromTop (34);                 // what the engine is (paint)
-        p.removeFromTop (6);
-        engineView.setBounds (row);
-        const int w = 100, nc = categoryButtons.size(), gapAfter = 14;   // the kinds, a gap, the engines
-        engineRow.setSize (w * (nc + engineButtons.size()) + gapAfter, row.getHeight());
-        for (int c = 0; c < nc; ++c) categoryButtons[c]->setBounds (c * w, 0, w - 6, row.getHeight());
-        for (int e = 0; e < engineButtons.size(); ++e) engineButtons[e]->setBounds ((nc + e) * w + gapAfter, 0, w - 6, row.getHeight());
-        if (! scrolled && categoryShown < 0 && engineShown < engineButtons.size())   // (the engine playing in sight, once)
-        {
-            engineView.setViewPosition (juce::jmax (0, engineButtons[engineShown]->getX() - row.getWidth() / 3), 0);
-            scrolled = row.getWidth() > 0;
-        }
+        listView.setBounds (r.removeFromLeft (juce::jlimit (130, 190, r.getWidth() / 4)));
+        r.removeFromLeft (10);
+        list.setSize (listView.getWidth(), (int) rows.size() * rowH);
     }
-    itemView.setBounds (p);
-    const int cols = juce::jmax (2, p.getWidth() / 150), cw = p.getWidth() / cols, rh = 46;
-    itemGrid.setSize (p.getWidth(), ((itemButtons.size() + cols - 1) / cols) * rh);
-    for (int i = 0; i < itemButtons.size(); ++i)
-        itemButtons[i]->setBounds ((i % cols) * cw, (i / cols) * rh, cw - 6, rh - 6);
+    gridView.setBounds (r);
+    const int n = (int) items.size(), cols = juce::jmax (2, r.getWidth() / 170);
+    grid.setSize (r.getWidth(), juce::jmax (1, (n + cols - 1) / cols) * tileH);
+    if (const int c = current(); c >= 0)              // (the sound playing in sight)
+        if (grid.tile (c).getBottom() > gridView.getViewPositionY() + gridView.getHeight())
+            gridView.setViewPosition (0, grid.tile (c).getY() - tileH);
 }
 void SoundSheet::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colours::black.withAlpha (0.45f));
-    auto p = panel();
-    g.setColour (theme::panel);
-    g.fillRoundedRectangle (p.toFloat(), 10.0f);
+    g.fillAll (theme::bg);
+    auto title = getLocalBounds().reduced (10, 8).removeFromTop (44).withRight (prev.getX() - 8);
     g.setColour (theme::track (ctl.sel));
-    auto title = p.reduced (16).removeFromTop (28);
-    g.fillRect (title.getX(), title.getCentreY() - 8, 3, 16);
+    g.fillRect (title.getX(), title.getCentreY() - 9, 3, 18);
+    const auto snd = ctl.sounds[(size_t) ctl.sel];
+    const juce::String now = isDrum (ctl.sel) ? juce::String (se_kit_name (snd.preset))
+                                              : juce::String (se_preset_name (snd.engine, snd.preset)) + juce::String::fromUTF8 ("  ·  ")
+                                                    + se_engine_name (snd.engine);
     g.setColour (theme::fg);
-    g.setFont (font (19.0f, true));
-    g.drawText (juce::String::fromUTF8 ("Son · ") + kTrackIds[ctl.sel] + " " + kTrackNames[ctl.sel]
-                    + (isDrum (ctl.sel) ? juce::String::fromUTF8 ("  ·  kit") : juce::String()),
-                title.withTrimmedLeft (12), juce::Justification::centredLeft);
-    if (! isDrum (ctl.sel) && ! about.isEmpty())
+    g.setFont (font (18.0f, true));
+    g.drawText (juce::String (kTrackIds[ctl.sel]) + juce::String::fromUTF8 ("  ") + now, title.withTrimmedLeft (12),
+                juce::Justification::centredLeft, true);
+}
+void SoundSheet::List::paint (juce::Graphics& g)
+{
+    for (size_t i = 0; i < owner.rows.size(); ++i)
     {
-        g.setColour (theme::dim);
-        g.setFont (font (12.5f));
-        g.drawFittedText (categoryShown >= 0 ? juce::String (itemButtons.size()) + juce::String::fromUTF8 (" sons, de tous les moteurs. "
-                                                                            "Le nom du moteur suit chaque son.")
-                                             : engineAbout (se_engine_name (engineShown)),
-                          about, juce::Justification::centredLeft, 2);
+        const auto& row = owner.rows[i];
+        auto r = juce::Rectangle<int> (0, (int) i * rowH, getWidth(), rowH).reduced (0, 2);
+        if (row.kind == 0)
+        {
+            g.setColour (theme::dim);
+            g.setFont (font (11.0f, true));
+            g.drawText (row.label, r.withTrimmedLeft (6), juce::Justification::bottomLeft);
+            continue;
+        }
+        const bool on = row.kind == 1 ? owner.categoryShown == row.index : owner.categoryShown < 0 && owner.engineShown == row.index;
+        const bool playing = row.kind == 2 && owner.ctl.sounds[(size_t) owner.ctl.sel].engine == row.index;
+        g.setColour (on ? theme::cellBeat : theme::panel);
+        g.fillRoundedRectangle (r.toFloat(), theme::radius);
+        if (on) { g.setColour (theme::track (owner.ctl.sel)); g.fillRect (r.removeFromLeft (3)); }
+        g.setColour (on ? theme::fg : theme::fg.withAlpha (0.8f));
+        g.setFont (font (14.0f, on));
+        g.drawText (row.label + (playing ? juce::String::fromUTF8 ("  •") : juce::String()), r.withTrimmedLeft (10),
+                    juce::Justification::centredLeft, true);
     }
 }
-void SoundSheet::mouseUp (const juce::MouseEvent& e)
+void SoundSheet::List::mouseUp (const juce::MouseEvent& e)
 {
-    if (! panel().contains (e.getPosition())) onClose();
+    if (e.mouseWasDraggedSinceMouseDown()) return;
+    const int i = e.getPosition().y / rowH;
+    if (i < 0 || i >= (int) owner.rows.size()) return;
+    const auto row = owner.rows[(size_t) i];
+    if (row.kind == 1) owner.showCategory (row.index);
+    if (row.kind == 2) owner.showEngine (row.index);
+    repaint();
+}
+juce::Rectangle<int> SoundSheet::Grid::tile (int i) const
+{
+    const int c = cols(), w = getWidth() / c;
+    return { (i % c) * w, (i / c) * tileH, w - 6, tileH - 6 };
+}
+void SoundSheet::Grid::paint (juce::Graphics& g)
+{
+    const int cur = owner.current();
+    const bool across = owner.categoryShown >= 0;
+    for (int i = 0; i < (int) owner.items.size(); ++i)
+    {
+        const auto it = owner.items[(size_t) i];
+        auto r = tile (i).toFloat();
+        const bool on = i == cur;
+        g.setColour (on ? theme::fg : theme::panel);
+        g.fillRoundedRectangle (r, theme::radius);
+        auto text = r.reduced (10.0f, 6.0f);
+        g.setColour (on ? theme::ink : theme::fg);
+        g.setFont (font (14.0f, true));
+        const juce::String name = it.engine < 0 ? juce::String (se_kit_name (it.preset)) : juce::String (se_preset_name (it.engine, it.preset));
+        if (across)
+        {
+            g.drawText (name, text.removeFromTop (text.getHeight() * 0.58f), juce::Justification::bottomLeft, true);
+            g.setColour (on ? theme::ink.withAlpha (0.6f) : theme::dim);
+            g.setFont (font (11.0f));
+            g.drawText (se_engine_name (it.engine), text, juce::Justification::topLeft, true);
+        }
+        else
+            g.drawText (name, text, juce::Justification::centredLeft, true);
+    }
+}
+void SoundSheet::Grid::mouseUp (const juce::MouseEvent& e)
+{
+    if (e.mouseWasDraggedSinceMouseDown()) return;
+    for (int i = 0; i < (int) owner.items.size(); ++i)
+        if (tile (i).contains (e.getPosition())) { owner.pick (i); return; }
 }
 
 // the kinds of sound, from the presets' names (across the engines: the sound sheet's first buttons)

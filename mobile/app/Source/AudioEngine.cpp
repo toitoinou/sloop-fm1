@@ -19,7 +19,7 @@ uint32_t mix (uint32_t h)
 AudioEngine::AudioEngine()
 {
     queue.resize ((size_t) fifo.getTotalSize());
-    for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; hits[t] = 0; stepPhase[t] = 0.0f; }
+    for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; barStep[t] = -1; hits[t] = 0; stepPhase[t] = 0.0f; }
     se_init();
     se_set_bpm (tempo);
     se_set_kit (kDefaultKit);
@@ -213,6 +213,7 @@ void AudioEngine::commit (int t, int64_t step)
     s.start = w.start;
     s.passes = w.passes;
     s.cur = step;
+    barStep[t] = (int) (step % kBar);
     if (w.idx < 0)
     {
         playingSlot[t] = -1;
@@ -360,6 +361,7 @@ void AudioEngine::stopTransport()
         s.idx = 0; s.passes = 0; s.start = 0; s.cur = -1; s.lastPos = -1; s.written = -1;
         playingSlot[t] = s.n ? s.slots[0] : -1;
         position[t] = -1;
+        barStep[t] = -1;
     }
 }
 

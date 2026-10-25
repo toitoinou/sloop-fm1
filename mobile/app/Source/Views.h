@@ -145,7 +145,7 @@ private:
     Controller& ctl;
     bool qfg = true, chords = false;
     int octave = 0;
-    struct Down { int pad; float vel; std::vector<int> notes; int track; };
+    struct Down { int pad; float vel; std::vector<int> notes, rows; int track; };
     std::map<int, Down> down;                        // finger -> what it plays
 };
 
@@ -173,13 +173,14 @@ public:
 
 private:
     juce::Rectangle<int> knobRect (int k) const;
-    juce::Rectangle<int> titleRect() const { return getLocalBounds().reduced (12, 8).removeFromTop (22); }
+    juce::Rectangle<int> titleRect() const { return getLocalBounds().reduced (12, 6).removeFromTop (26); }
+    juce::Rectangle<int> soundArrow (int i) const { return titleRect().removeFromRight (30 * (2 - i) + 4 * (1 - i)).removeFromLeft (30); }
     juce::Rectangle<int> pagesRect() const;
     int pageRows() const;
     juce::Rectangle<int> pageRect (int i) const;
     int knobAt (juce::Point<int>) const;
     Controller& ctl;
-    struct Drag { int k = -1; float y = 0, moved = 0, value = 0; };
+    struct Drag { int k = -1; float x = 0, y = 0, moved = 0, value = 0; };
     std::map<int, Drag> drags;
     std::array<double, kKnobs> lastTap {};
 };
@@ -205,33 +206,53 @@ private:
     juce::Slider vel;
 };
 
-// the sound of the selected track: a kit for DR; an engine, then one of its presets, for T1..T3. A choice plays at
-// once (a note or a few hits), the sheet stays open to try the next one
+// the sound of the selected track, on the whole screen: on the left the kinds of sound (from every engine) then the
+// engines, on the right their sounds; a tap plays one at once (a note, or a few hits for a kit), < > the one before /
+// after; the sheet stays open to try the next. DR: its kits
 class SoundSheet : public juce::Component
 {
 public:
     SoundSheet (Controller& c, std::function<void()> close);
     void paint (juce::Graphics&) override;
     void resized() override;
-    void mouseUp (const juce::MouseEvent&) override;
 
 private:
+    struct Item { int engine, preset; };                 // engine -1: a kit
+    struct Row { juce::String label; int kind, index; }; // kind 0 a heading, 1 a kind of sound, 2 an engine
+    struct List : juce::Component
+    {
+        explicit List (SoundSheet& o) : owner (o) {}
+        void paint (juce::Graphics&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        SoundSheet& owner;
+    };
+    struct Grid : juce::Component
+    {
+        explicit Grid (SoundSheet& o) : owner (o) {}
+        void paint (juce::Graphics&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        juce::Rectangle<int> tile (int i) const;
+        int cols() const { return juce::jmax (2, getWidth() / 170); }
+        SoundSheet& owner;
+    };
     void showEngine (int engine);
     void showCategory (int category);
-    void sync();
-    void audition();
-    juce::Rectangle<int> panel() const;
+    void pick (int index);
+    int current() const;                                 // the item that plays now, -1 none in this list
     Controller& ctl;
     std::function<void()> onClose;
-    int engineShown = 0, categoryShown = -1;        // a category across the engines, or one engine
-    bool scrolled = false;
-    juce::Rectangle<int> about;                      // the engine's line
-    juce::Component engineRow, itemGrid;
-    juce::Viewport engineView, itemView;
-    juce::OwnedArray<juce::TextButton> categoryButtons, engineButtons, itemButtons;
-    juce::Array<int> itemIds, itemEngines;           // the preset (or kit) each item button picks, and its engine
-    juce::TextButton ok { "OK" };
+    int engineShown = 0, categoryShown = -1;             // a kind of sound across the engines, or one engine
+    std::vector<Row> rows;
+    std::vector<Item> items;
+    List list { *this };
+    Grid grid { *this };
+    juce::Viewport listView, gridView;
+    juce::TextButton prev { "<" }, next { ">" }, ok { "OK" };
+    static constexpr int rowH = 40, tileH = 54;
 };
+
+void auditionSound (Controller&);                        // the track's sound, briefly (a note, a few drum hits)
+void stepSound (Controller&, int direction);             // the track's next / previous preset (its engine's), or kit
 
 // the settings: the key and its scale, the swing; the app's metronome, count-in, recording quantize; the audio
 class SettingsSheet : public juce::Component

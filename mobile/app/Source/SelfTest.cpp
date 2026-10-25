@@ -228,6 +228,25 @@ int runSelfTest()
         ctl.prefs.quantizeRec = true;
     }
 
+    // a key held while recording: the note lasts as long as it was held
+    {
+        ctl.select (1);
+        ctl.toggleRecord();
+        runTo (1, 1);
+        const int slot = audio.playingSlot[1].load();
+        ctl.recordHit (20, 100);                         // (row 20: empty in the demo's lines)
+        const double stepSec = 15.0 / ctl.bpm;
+        run (stepSec * 3.0);
+        ctl.recordRelease (1, 20);
+        auto& d = ctl.session.at (1, slot)->data;
+        int start = -1;
+        for (int st = 0; st < d.length; ++st) if (d.notes[(size_t) st].rows >> 20 & 1u) start = st;
+        check (start >= 0 && d.noteLength (start, 20) >= 3 && d.noteLength (start, 20) <= 4,
+               "a key held while recording: the note keeps its length");
+        ctl.toggleRecord();
+        ctl.select (0);
+    }
+
     // REC from stopped: a bar of clicks, then the song
     {
         ctl.togglePlay();

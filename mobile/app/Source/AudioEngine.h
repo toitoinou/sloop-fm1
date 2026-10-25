@@ -46,6 +46,8 @@ public:
     std::atomic<int> paramValue[kTracks][kParamSlots];   // every SLOOP parameter as the engine has it (a new sound
     std::atomic<int> paramSerial { 0 };                  // sets them all): counts up when they change
     std::atomic<float> stepPhase[kTracks];               // how far into its step each track is, 0..1 (recording)
+    std::atomic<int> barStep[kTracks];                   // its step in the bar, clip or not (-1 stopped): a new clip
+                                                         // recorded on an empty track starts where the bar is
 
     // ---- juce::AudioIODeviceCallback
     void audioDeviceIOCallbackWithContext (const float* const*, int, float* const* out, int numOut, int numSamples,

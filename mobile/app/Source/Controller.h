@@ -45,6 +45,8 @@ public:
     bool playing = false;
     bool recording = false;
     struct Pending { int track, slot, step; };
+    struct RecHeld { int track, slot, step, row; };
+    std::vector<RecHeld> recordedHeld;                   // synth notes recorded, their keys still down
     std::vector<Pending> pendingRecord;                  // recorded on a step not played yet: sent once it has passed
     int bpm = 118;
     int swing = 0;                                       // 0..100 (SLOOP's SWING: 50 % straight .. 75 %)
@@ -128,6 +130,7 @@ public:
         lane = 0;
         held.clear();
         pendingRecord.clear();
+        recordedHeld.clear();
         recording = false;
         editSlot.fill (0);
         queued.fill (kNone);
@@ -516,21 +519,21 @@ public:
         const int t = sel;
         int slot = audio.playingSlot[t].load();
         remember ("rec");
-        if (slot < 0)                                    // nothing plays on the track: a new clip, playing at once
+        int pos = audio.position[t].load();
+        if (slot < 0)                                    // nothing plays on the track: a new clip from this bar, this hit in it
         {
+            pos = audio.barStep[t].load();
+            if (pos < 0) return;
             slot = editSlot[(size_t) t];
             if (session.at (t, slot)) { slot = 0; while (slot < session.scenes() && session.at (t, slot)) ++slot; }
             if (slot == session.scenes()) session.addScene();
             session.at (t, slot) = Session::newClip (t, "Rec " + juce::String (slot + 1));
             editSlot[(size_t) t] = slot;
             playlist[(size_t) t] = { slot };
-            sendPlaylist (t, AudioEngine::When::now);
-            notify();
-            return;                                       // (it starts with this bar: the next hits go in)
+            sendPlaylist (t, AudioEngine::When::now);    // (from the start of the bar playing: its steps line up)
         }
         auto& clip = session.at (t, slot);
         if (! clip) return;
-        const int pos = audio.position[t].load();
         if (pos < 0) return;
         const float phase = audio.stepPhase[t].load();
         const bool late = phase >= 0.5f;                 // nearer the next step
@@ -549,10 +552,31 @@ public:
             x.vel = (uint8_t) velocity;
             x.nudge = (int8_t) juce::jlimit (-3, 3, nudge);
             d.noteLen[(size_t) step][(size_t) row] = 1;
+            recordedHeld.push_back ({ t, slot, step, row });   // (its length when the key is let go: recordRelease)
         }
         if (late) pendingRecord.push_back ({ t, slot, step });   // (it already sounded: not twice)
         else clipEdited (t, slot);
         notify();
+    }
+    // a key let go while recording: the note it recorded lasts until here (to the nearest step)
+    void recordRelease (int t, int row)
+    {
+        auto it = std::find_if (recordedHeld.begin(), recordedHeld.end(),
+                                [t, row] (const RecHeld& h) { return h.track == t && h.row == row; });
+        if (it == recordedHeld.end()) return;
+        const auto h = *it;
+        recordedHeld.erase (it);
+        auto& clip = session.at (h.track, h.slot);
+        const int pos = audio.position[h.track].load();
+        if (! clip || pos < 0 || audio.playingSlot[h.track].load() != h.slot) return;
+        auto& d = clip->data;
+        if (! (d.notes[(size_t) h.step].rows >> h.row & 1u)) return;
+        int len = pos + (audio.stepPhase[h.track].load() >= 0.5f ? 1 : 0) - h.step;
+        if (len < 0) len += d.length;                    // (held over the loop's end)
+        len = juce::jlimit (1, d.maxLength (h.row, h.step), len);
+        if (len <= 1 || d.noteLength (h.step, h.row) == len) return;
+        d.noteLen[(size_t) h.step][(size_t) h.row] = (uint8_t) len;
+        clipEdited (h.track, h.slot);
     }
     bool lockedSinceHold = false;                        // a knob turned while steps were held
 
@@ -570,6 +594,7 @@ private:
         lastKind = {};
         held.clear();
         pendingRecord.clear();
+        recordedHeld.clear();
         session = u.session;
         for (int t = 0; t < kTracks; ++t)
         {
