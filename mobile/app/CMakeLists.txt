@@ -42,9 +42,10 @@ add_custom_target(sloop_tables DEPENDS ${SLOOP_TABLES})
 set(PLAITS_DIR ${SLOOP_ROOT}/mobile/third_party/plaits)
 file(GLOB_RECURSE PLAITS_SOURCES ${PLAITS_DIR}/plaits/*.cc ${PLAITS_DIR}/stmlib/*.cc)
 add_library(sloop_engine STATIC ${SLOOP_ROOT}/mobile/engine/sloop_engine.c ${SLOOP_ROOT}/mobile/engine/plaits_glue.cc
-            ${PLAITS_SOURCES})
+            ${PLAITS_SOURCES} ${SLOOP_ROOT}/mobile/engine/obxd_glue.cc)
 add_dependencies(sloop_engine sloop_tables)
 target_include_directories(sloop_engine PRIVATE ${SLOOP_GEN} ${SLOOP_ROOT}/firmware/src ${PLAITS_DIR}
+                           ${SLOOP_ROOT}/mobile/third_party/obxd/Engine
                            PUBLIC ${SLOOP_ROOT}/mobile/engine)
 # as the firmware's host builds: wrapping arithmetic, no strict aliasing, the firmware's own warnings left alone
 target_compile_options(sloop_engine PRIVATE -O2 -fwrapv -fno-strict-aliasing -w)

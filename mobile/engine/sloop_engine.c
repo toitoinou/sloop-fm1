@@ -3,6 +3,7 @@
  * RAM) in one translation unit, and the calls of sloop_engine.h on top of it. The generated tables
  * (felucca_tables.h and the others) come from mobile/tools/gen_engine_tables.sh. */
 #define FELUCCA_PLAITS 1                        /* the PLAITS engine (eng_plaits.c), the app's own */
+#define FELUCCA_OBXD 1                          /* the OBXD engine (eng_obxd.c), the app's own */
 #include "../../firmware/host/preview.c"
 #include "sloop_engine.h"
 
@@ -10,12 +11,14 @@ _Static_assert(SE_P_LEVEL == P_LEVEL && SE_P_DEC == P_DEC && SE_P_REV == P_REV &
                SE_P_MUTE == P_MUTE && SE_P_TFLT == P_TFLT, "sloop_engine.h's parameter ids follow core.h");
 _Static_assert(SE_P_ATK == P_ATK && SE_P_SUS == P_SUS && SE_P_REL == P_REL && SE_P_DIST == P_DIST &&
                SE_P_CHOR == P_CHOR && SE_P_DLY == P_DLY && SE_P_E0 == P_E0, "sloop_engine.h's parameter ids follow core.h");
+_Static_assert(SE_P_MTYPE == P_MTYPE && SE_P_MRISE == P_MRISE, "sloop_engine.h's parameter ids follow core.h");
 _Static_assert(SE_DRUM == TRK_DRUM && SE_TRACKS == NTRK && SE_LANES == DRUM_LANES && SE_MAX_STEPS == NSTEP &&
                SE_MAX_LOCKS == NLOCK, "sloop_engine.h's sizes follow core.h");
 
 void se_init(void)
 {
-    plaits_init();                  /* (the PLAITS voices, allocated once here, not on the audio thread) */
+    plaits_init();                  /* (the PLAITS and OBXD voices, allocated once here, not on the audio thread) */
+    obxd_init();
     preview_init();
     preview_render();               /* as the web preview: the first block sets the engine's buffers up */
 }

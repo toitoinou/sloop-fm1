@@ -23,12 +23,16 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #ifndef FELUCCA_PLAITS
 #define FELUCCA_PLAITS 0         /* PLAITS (mobile/engine/eng_plaits.c, Mutable Instruments' Plaits): the mobile app only */
 #endif
-#define NENGINES (12 + FELUCCA_SLICE + FELUCCA_PLAITS)
+#ifndef FELUCCA_OBXD
+#define FELUCCA_OBXD 0           /* OBXD (mobile/engine/eng_obxd.c, Obxd's voice): the mobile app only */
+#endif
+#define NENGINES (12 + FELUCCA_SLICE + FELUCCA_PLAITS + FELUCCA_OBXD)
 #define ENGI_GRAIN 8u            /* GRAIN, PHYS, NOISE (SLOOP 2.5, appended after FM6: the stores keep the numbers) */
 #define ENGI_PHYS 10u
 #define ENGI_NOISE 11u
 #define ENGI_SLICE 12u           /* with FELUCCA_SLICE: after NOISE */
-#define ENGI_PLAITS (12u + FELUCCA_SLICE)   /* with FELUCCA_PLAITS: last */
+#define ENGI_PLAITS (12u + FELUCCA_SLICE)   /* with FELUCCA_PLAITS: after NOISE (and SLICE) */
+#define ENGI_OBXD (12u + FELUCCA_SLICE + FELUCCA_PLAITS)   /* with FELUCCA_OBXD: last */
 #define ENGI_FM6 9u              /* the FM6 engine's index (eng_fm6.c, the stores: append-only) */
 #define UP_SLOTS 32u             /* user presets (upreset.c) */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
@@ -74,6 +78,9 @@ enum {                          /* per-track parameters */
     P_FTYPE,                                   /* ANALOG's filter TYPE: LP (as before) / BP / HP (eng_analog.c) */
     P_ESYNC,                                   /* ENV SYNC: ATK DEC REL as note values of the tempo (voice.c) */
     P_LSYNC, P_LTRIG, P_LPOL,                  /* LFO 2: SYNC to the tempo, TRIG (NOTE / FREE), POL (BI / UNI) (voice.c) */
+    /* SLOOP Touch: the track's MOD stage, stereo, after its FILTER (fx.c mod_run): a Juno-60 chorus (I, II, I+II) or
+     * a vibrato as Boss's VB-2 (RATE, DEPTH: how far the pitch goes, RISE: how slowly it comes in after a note) */
+    P_MTYPE, P_MRATE, P_MDEPTH, P_MRISE,
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
     P_E8, P_E9, P_E10, P_E11, P_E12, P_E13, P_E14, P_E15,   /* SLOOP Touch: 16 engine parameters, 4 EDIT pages */
     P_COUNT

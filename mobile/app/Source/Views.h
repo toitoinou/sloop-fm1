@@ -217,17 +217,19 @@ public:
 
 private:
     void showEngine (int engine);
+    void showCategory (int category);
     void sync();
     void audition();
     juce::Rectangle<int> panel() const;
     Controller& ctl;
     std::function<void()> onClose;
-    int engineShown = 0;
+    int engineShown = 0, categoryShown = -1;        // a category across the engines, or one engine
+    bool scrolled = false;
     juce::Rectangle<int> about;                      // the engine's line
     juce::Component engineRow, itemGrid;
     juce::Viewport engineView, itemView;
-    juce::OwnedArray<juce::TextButton> engineButtons, itemButtons;
-    juce::Array<int> itemIds;                        // the preset or kit each item button picks
+    juce::OwnedArray<juce::TextButton> categoryButtons, engineButtons, itemButtons;
+    juce::Array<int> itemIds, itemEngines;           // the preset (or kit) each item button picks, and its engine
     juce::TextButton ok { "OK" };
 };
 
@@ -262,6 +264,9 @@ private:
 };
 
 juce::String engineAbout (const juce::String& engineName);   // an engine in a line
+int soundCategoryCount();                                     // the kinds of sound (Basses, Leads, Nappes...)
+juce::String soundCategoryName (int category);
+int soundCategory (const juce::String& presetName);           // a preset's kind, from its name
 
 // a button that is on only while a finger holds it (FILL)
 class HoldButton : public juce::TextButton

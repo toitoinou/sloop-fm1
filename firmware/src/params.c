@@ -47,6 +47,7 @@ static const char *const N_DLY[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "
 static const char *const N_SCALE[] = {"CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM",
                                     "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"};
 static const char *const N_ONOFF[] = {"OFF", "ON"};
+static const char *const N_MTYPE[] = {"OFF", "JUNO I", "JUNO II", "JUNO I+II", "VIBRATO"};   /* fx.c MT_* */
 static const char *const N_CLKOUT[] = {"OFF", "OUT"};   /* 2.7, GLO > MIDI 3 > CLOCK: OUT, the MIDI clock out */
 static const char *const N_DRMAP[] = {"GM", "1-16"};   /* (2.7) GLO > MIDI 3: DR MAP */
 static const char *const N_QUANT[] = {"OFF", "SNAP", "WHITE"};   /* seq.c kb_map; 1 = SNAP as the old ON */
@@ -71,6 +72,9 @@ static const char *const N_ENGNAME[] = {"ANALOG", "DIGITAL", "PHASE", "LOFI", "S
 #endif
 #if FELUCCA_PLAITS
                                              "PLAITS",
+#endif
+#if FELUCCA_OBXD
+                                             "OBXD",
 #endif
 };
 
@@ -143,6 +147,10 @@ static const param_desc_t TP[P_COUNT] = {
     [P_LSYNC] = PE("SYNC", N_LSYNC, 0),           /* LFO 2: OFF = RATE, as before */
     [P_LTRIG] = PE("TRIG", N_LTRIG, 0),
     [P_LPOL] = PE("POL", N_LPOL, 0),
+    [P_MTYPE] = PE("MOD", N_MTYPE, 0),
+    [P_MRATE] = PD("RATE", F_PCT, 0, 127, 64),       /* JUNO: around the original's rate (64); VIBRATO 0.2 .. 12 Hz */
+    [P_MDEPTH] = PD("DEPTH", F_PCT, 0, 127, 64),
+    [P_MRISE] = PD("RISE", F_PCT, 0, 127, 0),        /* VIBRATO: 0 at once .. ~3 s (JUNO: unused) */
 };
 /* a preset's extra parameters (preset_t.x) into p, each clamped to its range */
 static void preset_extras(int16_t *p, const preset_t *pr)

@@ -1066,6 +1066,13 @@ SoundSheet::SoundSheet (Controller& c, std::function<void()> close) : ctl (c), o
     if (! isDrum (ctl.sel))
     {
         addAndMakeVisible (engineView);
+        for (int k = 0; k < soundCategoryCount(); ++k)   // first the kinds of sound, from every engine
+        {
+            auto* b = categoryButtons.add (new juce::TextButton (soundCategoryName (k)));
+            b->setColour (juce::TextButton::buttonColourId, theme::cellBeat);
+            b->onClick = [this, k] { showCategory (k); };
+            engineRow.addAndMakeVisible (b);
+        }
         for (int e = 0; e < se_engine_count(); ++e)
         {
             auto* b = engineButtons.add (new juce::TextButton (se_engine_name (e)));
@@ -1088,15 +1095,38 @@ SoundSheet::SoundSheet (Controller& c, std::function<void()> close) : ctl (c), o
         sync();
     }
 }
+void SoundSheet::showCategory (int category)
+{
+    categoryShown = category;
+    itemButtons.clear();
+    itemIds.clear();
+    itemEngines.clear();
+    for (int e = 0; e < se_engine_count(); ++e)
+        for (int p = 0; p < se_preset_count (e); ++p)
+            if (soundCategory (se_preset_name (e, p)) == category)
+            {
+                auto* b = itemButtons.add (new juce::TextButton (juce::String (se_preset_name (e, p)) + juce::String::fromUTF8 ("  ·  ")
+                                                                 + se_engine_name (e)));
+                itemIds.add (p);
+                itemEngines.add (e);
+                b->onClick = [this, e, p] { ctl.setSound (ctl.sel, e, p); sync(); audition(); };
+                itemGrid.addAndMakeVisible (b);
+            }
+    sync();
+    resized();
+}
 void SoundSheet::showEngine (int engine)
 {
     engineShown = engine;
+    categoryShown = -1;
     itemButtons.clear();
     itemIds.clear();
+    itemEngines.clear();
     for (int p = 0; p < se_preset_count (engine); ++p)
     {
         auto* b = itemButtons.add (new juce::TextButton (se_preset_name (engine, p)));
         itemIds.add (p);
+        itemEngines.add (engine);
         b->onClick = [this, engine, p] { ctl.setSound (ctl.sel, engine, p); sync(); audition(); };
         itemGrid.addAndMakeVisible (b);
     }
@@ -1106,11 +1136,13 @@ void SoundSheet::showEngine (int engine)
 void SoundSheet::sync()
 {
     const auto& s = ctl.sounds[(size_t) ctl.sel];
+    for (int c = 0; c < categoryButtons.size(); ++c)
+        categoryButtons[c]->setToggleState (c == categoryShown, juce::dontSendNotification);
     for (int e = 0; e < engineButtons.size(); ++e)
-        engineButtons[e]->setToggleState (e == engineShown, juce::dontSendNotification);
-    const bool here = isDrum (ctl.sel) || s.engine == engineShown;
+        engineButtons[e]->setToggleState (categoryShown < 0 && e == engineShown, juce::dontSendNotification);
     for (int i = 0; i < itemButtons.size(); ++i)
-        itemButtons[i]->setToggleState (here && itemIds[i] == s.preset, juce::dontSendNotification);
+        itemButtons[i]->setToggleState ((isDrum (ctl.sel) || itemEngines[i] == s.engine) && itemIds[i] == s.preset,
+                                        juce::dontSendNotification);
     repaint();
 }
 void SoundSheet::audition()
@@ -1146,9 +1178,15 @@ void SoundSheet::resized()
         about = p.removeFromTop (34);                 // what the engine is (paint)
         p.removeFromTop (6);
         engineView.setBounds (row);
-        const int w = 100;
-        engineRow.setSize (w * engineButtons.size(), row.getHeight());
-        for (int e = 0; e < engineButtons.size(); ++e) engineButtons[e]->setBounds (e * w, 0, w - 6, row.getHeight());
+        const int w = 100, nc = categoryButtons.size(), gapAfter = 14;   // the kinds, a gap, the engines
+        engineRow.setSize (w * (nc + engineButtons.size()) + gapAfter, row.getHeight());
+        for (int c = 0; c < nc; ++c) categoryButtons[c]->setBounds (c * w, 0, w - 6, row.getHeight());
+        for (int e = 0; e < engineButtons.size(); ++e) engineButtons[e]->setBounds ((nc + e) * w + gapAfter, 0, w - 6, row.getHeight());
+        if (! scrolled && categoryShown < 0 && engineShown < engineButtons.size())   // (the engine playing in sight, once)
+        {
+            engineView.setViewPosition (juce::jmax (0, engineButtons[engineShown]->getX() - row.getWidth() / 3), 0);
+            scrolled = row.getWidth() > 0;
+        }
     }
     itemView.setBounds (p);
     const int cols = juce::jmax (2, p.getWidth() / 150), cw = p.getWidth() / cols, rh = 46;
@@ -1174,12 +1212,49 @@ void SoundSheet::paint (juce::Graphics& g)
     {
         g.setColour (theme::dim);
         g.setFont (font (12.5f));
-        g.drawFittedText (engineAbout (se_engine_name (engineShown)), about, juce::Justification::centredLeft, 2);
+        g.drawFittedText (categoryShown >= 0 ? juce::String (itemButtons.size()) + juce::String::fromUTF8 (" sons, de tous les moteurs. "
+                                                                            "Le nom du moteur suit chaque son.")
+                                             : engineAbout (se_engine_name (engineShown)),
+                          about, juce::Justification::centredLeft, 2);
     }
 }
 void SoundSheet::mouseUp (const juce::MouseEvent& e)
 {
     if (! panel().contains (e.getPosition())) onClose();
+}
+
+// the kinds of sound, from the presets' names (across the engines: the sound sheet's first buttons)
+namespace
+{
+const char* const kCategories[] = { "Basses", "Leads", "Nappes", "Claviers", "Cloches", "Plucks", "Stabs", "Percus",
+                                    "Textures" };
+}
+int soundCategoryCount() { return (int) std::size (kCategories); }
+juce::String soundCategoryName (int c) { return juce::String::fromUTF8 (kCategories[juce::jlimit (0, soundCategoryCount() - 1, c)]); }
+int soundCategory (const juce::String& name)
+{
+    auto has = [&name] (std::initializer_list<const char*> words)
+    {
+        for (auto* w : words)
+            if (name.containsWholeWord (w)) return true;
+        return false;
+    };
+    if (has ({ "KICK", "SNARE", "HAT", "DRUM", "TOMS", "TABLA", "CONGA", "TIMPANI", "BLOCK", "KIT" })) return 7;
+    if (has ({ "WIND", "RAIN", "NOISE", "VINYL", "HISS", "RISER", "RADIO", "ARCADE", "OCEAN", "METAL", "BITCRUSH", "NZ",
+               "PARTICLES", "SPEECH", "ROBOT", "DRONE", "SWEEP", "CLOUD", "DUST", "HAZE", "SHIMMER", "FREEZE", "TERRAIN",
+               "GRAINS", "SCRATCH", "BEEP" }))
+        return 8;
+    if (has ({ "BASS", "BS", "808", "SUB", "REESE", "WOBBLE", "BOOM", "ACID", "303" })) return 0;
+    if (has ({ "PLUCK", "HARP", "GTR", "KOTO", "BANJO", "SITAR", "NYLON", "PICK" })) return 5;
+    if (has ({ "PAD", "STR", "STRING", "STRINGS", "CHOIR", "OOH", "AAH", "ATMOS", "ENSEMBLE", "CELLO", "BOW", "BOWED",
+               "TANPURA", "SWARM", "WAVETABLE" }))
+        return 2;
+    if (has ({ "LEAD", "LD", "FLUTE", "HARMONICA", "TALKBOX", "SUPERSAW", "HOOVER" })) return 1;
+    if (has ({ "BELL", "BELLS", "MALLET", "MARIMBA", "KALIMBA", "GLOCKEN", "CELESTA", "XYLOPHONE", "MUSIC", "VIBES", "VIBRA",
+               "CHIMES", "GLASS", "STEEL", "THUMB", "BAR", "BARS", "MODAL", "TREE" }))
+        return 4;
+    if (has ({ "BRASS", "STAB", "HORN", "CHORD", "SECT", "RAVE", "POWER" })) return 6;
+    return 3;                                        // (what is left plays as keys)
 }
 
 // what each engine is, in a line (the sound sheet), by its name

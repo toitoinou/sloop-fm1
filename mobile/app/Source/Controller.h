@@ -387,6 +387,7 @@ public:
         if (*se_engine_page (e, 2)) p.push_back (Page::edit3);
         if (*se_engine_page (e, 3)) p.push_back (Page::edit4);
         p.push_back (Page::env);
+        p.push_back (Page::mod);
         p.push_back (Page::fx);
         return p;
     }
@@ -402,13 +403,15 @@ public:
             case Page::edit3: return se_engine_page (e, 2);
             case Page::edit4: return se_engine_page (e, 3);
             case Page::env: return "Env";
+            case Page::mod: return "Mod";
             case Page::fx: return "FX";
         }
         return {};
     }
     std::array<KnobDef, kKnobs> knobDefs() const
     {
-        static const int mix[] = { 0, 50, 36, 39 }, env[] = { 1, 2, 3, 4 }, fx[] = { 33, 34, 35, 36 };
+        static const int mix[] = { 0, 50, 36, 39 }, env[] = { 1, 2, 3, 4 }, fx[] = { 33, 34, 35, 36 },
+                         mod[] = { SE_P_MTYPE, SE_P_MRATE, SE_P_MDEPTH, SE_P_MRISE };
         static const char* mixNames[] = { "Level", "Filtre", "Reverb", "Pan" };
         const int e = isDrum (sel) ? -1 : sounds[(size_t) sel].engine;
         std::array<KnobDef, kKnobs> d;
@@ -424,6 +427,7 @@ public:
                 case Page::edit3: id = SE_P_E0 + 8 + k; break;
                 case Page::edit4: id = SE_P_E0 + 12 + k; break;
                 case Page::env: id = env[k]; break;
+                case Page::mod: id = mod[k]; break;
                 case Page::fx: id = fx[k]; break;
             }
             const char* label = nullptr;

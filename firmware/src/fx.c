@@ -666,14 +666,100 @@ static void mix_part(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)   /* into
     mix_part_run(t, n, mx, b);
     memcpy(t->p, pn, sizeof pnew[0]);
 }
+/* SLOOP Touch: the MOD stage, after the track's FILTER, before its level and pan; stereo (a synth part):
+ *   JUNO I, II, I+II  the Juno-60's chorus: one bucket-brigade line read at two points that a triangle LFO moves in
+ *                     opposite directions, left and right, the dry beside them (I: 0.5 Hz, II: 0.83 Hz, wide; I+II:
+ *                     9.75 Hz, shallow: the fast shimmer). RATE and DEPTH: 64 = the original; the wet darkened a
+ *                     little, as a BBD;
+ *   VIBRATO           as Boss's VB-2: only the wet, a delay a sine moves: RATE 0.2 .. 12 Hz, DEPTH how far the pitch
+ *                     goes (up to about a semitone, whatever the rate), RISE how slowly it comes in after a note
+ *                     starts (0 at once .. ~3 s, the VB-2's RISE TIME). */
+enum { MT_OFF, MT_JUNO1, MT_JUNO2, MT_JUNO12, MT_VIB, MT_N };
+#define MOD_LEN 2048u                                   /* 46 ms (a power of 2: masked) */
+typedef struct { int32_t line[MOD_LEN]; uint32_t wp; float ph, rise, lpl, lpr; uint8_t held, on; } mod_t;
+static mod_t modst[NPART];
+static inline float mod_read(const int32_t *line, uint32_t wp, float d)   /* d samples back, linearly */
+{
+    uint32_t k = (uint32_t)d;
+    float f = d - (float)k;
+    int32_t a = line[(wp - k) & (MOD_LEN - 1u)], b = line[(wp - k - 1u) & (MOD_LEN - 1u)];
+    return (float)a + (float)(b - a) * f;
+}
+/* the MOD of part t on b into bl / br: 0 while OFF (bl, br untouched: b goes on, mono) */
+static int mod_run(track_t *t, const int32_t *b, int32_t *bl, int32_t *br, uint32_t n)
+{
+    mod_t *m = &modst[(uint32_t)(t - trk) % NPART];
+    int32_t ty = clamp(t->p[P_MTYPE], 0, MT_N - 1);
+    const float fs = (float)FS;
+    float rate, center, swing, ph, lpl, lpr, lpk;
+    uint32_t i, wp, held = 0;
+    if (!ty) {
+        if (m->on)
+            memset(m, 0, sizeof *m);                    /* (from rest the next time) */
+        return 0;
+    }
+    m->on = 1;
+    for (i = 0; i < NVOICE; i++)
+        held |= t->v[i].gate;
+    if (held && !m->held)
+        m->rise = 0.0f;                                 /* a note after silence: the vibrato rises again */
+    m->held = (uint8_t)held;
+    if (ty == MT_VIB) {
+        float dev = (float)clamp(t->p[P_MDEPTH], 0, 127) / 127.0f * 0.06f;   /* the pitch's swing, up to ~1 semitone */
+        float rt = (float)clamp(t->p[P_MRISE], 0, 127) / 127.0f * 3.0f;
+        rate = 0.2f * powf(60.0f, (float)clamp(t->p[P_MRATE], 0, 127) / 127.0f);
+        swing = dev / (6.2831853f * rate) * fs;         /* a delay moving A sin(wt): the pitch moves A w */
+        if (swing > 0.02f * fs)
+            swing = 0.02f * fs;
+        m->rise = rt > 0.0f ? m->rise + (float)n / (rt * fs) : 1.0f;
+        if (m->rise > 1.0f)
+            m->rise = 1.0f;
+        swing *= m->rise;
+        center = swing + 0.001f * fs;
+    } else {
+        static const float JR[3] = {0.513f, 0.863f, 9.75f}, JC[3] = {3.5e-3f, 3.5e-3f, 3.3e-3f}, JS[3] = {1.85e-3f, 1.85e-3f, 0.3e-3f};
+        float k = (float)clamp(t->p[P_MDEPTH], 0, 127) / 64.0f;
+        rate = JR[ty - 1] * powf(2.0f, (float)(clamp(t->p[P_MRATE], 0, 127) - 64) / 32.0f);
+        center = JC[ty - 1] * fs;
+        swing = JS[ty - 1] * fs * k;
+        if (swing > center - 2.0f)
+            swing = center - 2.0f;
+    }
+    ph = m->ph, wp = m->wp, lpl = m->lpl, lpr = m->lpr;
+    lpk = 1.0f - expf(-6.2831853f * 9000.0f / fs);     /* the BBD's darker wet */
+    for (i = 0; i < n; i++) {
+        float lfo;
+        m->line[wp] = b[i];
+        ph += rate / fs;
+        if (ph >= 1.0f)
+            ph -= 1.0f;
+        if (ty == MT_VIB) {
+            float v = mod_read(m->line, wp, center + swing * sinf(6.2831853f * ph));
+            bl[i] = br[i] = (int32_t)v;
+        } else {
+            float wl, wr;
+            lfo = ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph;   /* the triangle */
+            wl = mod_read(m->line, wp, center + swing * lfo);
+            wr = mod_read(m->line, wp, center - swing * lfo);
+            lpl += (wl - lpl) * lpk;
+            lpr += (wr - lpr) * lpk;
+            bl[i] = (int32_t)(((float)b[i] + lpl) * 0.7f);
+            br[i] = (int32_t)(((float)b[i] + lpr) * 0.7f);
+        }
+        wp = (wp + 1u) & (MOD_LEN - 1u);
+    }
+    m->ph = ph, m->wp = wp, m->lpl = lpl, m->lpr = lpr;
+    return 1;
+}
+
 static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
 {
     uint32_t i;
     int32_t g0 = 32767 - t->att, g1 = gain_next(t);
     if (track_render(t, b, n))
-        t->tail = t->p[P_ITYPE] ? 64 : 16, t->ins_xt = 0;              /* blocks of DIST / INSERT state to run out after the last
+        t->tail = t->p[P_ITYPE] | t->p[P_MTYPE] ? 64 : 16, t->ins_xt = 0;              /* blocks of DIST / INSERT state to run out after the last
                                                          * voice (the INSERT's: 46 ms, a flanger's feedback) */
-    else if ((!t->tail || !(t->p[P_DIST] | t->p[P_ITYPE]) || !--t->tail) && !slicer_busy(t) &&
+    else if ((!t->tail || !(t->p[P_DIST] | t->p[P_ITYPE] | t->p[P_MTYPE]) || !--t->tail) && !slicer_busy(t) &&
              !(t->ins_run && t->ins_res > 16u && t->ins_xt < 255u && ++t->ins_xt)) {   /* (2.6: the INSERT's DC
                                                          * blocker run out first, up to 255 blocks more: no step) */
         slicer_track(t, 0, n);                          /* (the SLICER's step clock runs on) */
@@ -708,16 +794,24 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         }
         int32_t lvl0, dl, gl0, dgl, gr0, dgr;          /* (2.7) LEVEL (and a new sound's trim) and PAN glide (drums.c
                                                          * mix_glide), ramped sample by sample inside the block */
+        static int32_t mbl[CTL], mbr[CTL];
+        const int32_t *bl = b, *br = b;                 /* (SLOOP Touch: the MOD stage, stereo from here) */
+        if (mod_run(t, b, mbl, mbr, n))
+            bl = mbl, br = mbr;
         if (!t->mix_on)
             t->lvl = lvl, t->gpl = gl, t->gpr = gr, t->mix_on = 1;
         lvl0 = t->lvl, gl0 = t->gpl, gr0 = t->gpr;
         t->lvl = mix_glide(lvl0, lvl), t->gpl = mix_glide(gl0, gl), t->gpr = mix_glide(gr0, gr);
         dl = (t->lvl - lvl0) >> CTL_LOG2, dgl = t->gpl - gl0, dgr = t->gpr - gr0;
         for (i = 0; i < n; i++) {
-            int32_t x = ((b[i] >> 2) * (lvl0 + dl * (int32_t)i)) >> 10, a;   /* pre-shift: 8 loud voices */
+            int32_t lv = lvl0 + dl * (int32_t)i;
+            int32_t xl = ((bl[i] >> 2) * lv) >> 10, xr = bl == br ? xl : ((br[i] >> 2) * lv) >> 10, x, a;   /* pre-shift: 8 loud voices */
             int32_t xs, g = ga + (((gb - ga) * (int32_t)i) >> CTL_LOG2);
-            if (g < 32767)
-                x = (x >> 4) * (g >> 3) >> 8;           /* (Q15 in two halves: no 32-bit overflow) */
+            if (g < 32767) {
+                xl = (xl >> 4) * (g >> 3) >> 8;         /* (Q15 in two halves: no 32-bit overflow) */
+                xr = bl == br ? xl : (xr >> 4) * (g >> 3) >> 8;
+            }
+            x = bl == br ? xl : (xl >> 1) + (xr >> 1);  /* (the sends: the middle) */
             a = x < 0 ? -x : x;
             xs = clamp(x, -xmax, xmax);                 /* sends: mulq15 would overflow */
             if (a > pk)
@@ -729,8 +823,8 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             if (r)
                 mx->sr[i] += mulq15(xs, r);
             gl = gl0 + ((dgl * (int32_t)i) >> CTL_LOG2), gr = gr0 + ((dgr * (int32_t)i) >> CTL_LOG2);   /* (2.7) */
-            mx->l[i] += ((x >> 4) * gl) >> 8;           /* (x may pass 2^19: >> 4 first) */
-            mx->r[i] += ((x >> 4) * gr) >> 8;
+            mx->l[i] += ((xl >> 4) * gl) >> 8;          /* (x may pass 2^19: >> 4 first) */
+            mx->r[i] += ((xr >> 4) * gr) >> 8;
         }
         t->peak = pk;
     }

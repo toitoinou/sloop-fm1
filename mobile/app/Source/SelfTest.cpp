@@ -17,11 +17,17 @@ int runSelfTest()
     juce::AudioBuffer<float> out (2, block);
     double energy = 0.0;
     long frames = 0;
+    double side = 0.0;                                    // (left - right: what is stereo)
     auto run = [&] (double seconds)
     {
         for (int i = 0; i < (int) (seconds * rate / block); ++i)
         {
             audio.audioDeviceIOCallbackWithContext (nullptr, 0, out.getArrayOfWritePointers(), 2, block, {});
+            for (int k = 0; k < block; ++k)
+            {
+                const double d = (double) out.getSample (0, k) - out.getSample (1, k);
+                side += d * d;
+            }
             for (int k = 0; k < block; ++k) energy += (double) out.getSample (0, k) * out.getSample (0, k);
             frames += block;
         }
@@ -87,7 +93,7 @@ int runSelfTest()
     ctl.setPage (Page::edit4);
     const auto fenv = ctl.knobDefs();
     ctl.setKnob (3, 40);
-    check (ctl.pages().size() == 8 && fenv[3].valid && fenv[3].param == SE_P_E0 + 15 && ctl.params[1][(size_t) SE_P_E0 + 15] == 40,
+    check (ctl.pages().size() == 9 && fenv[3].valid && fenv[3].param == SE_P_E0 + 15 && ctl.params[1][(size_t) SE_P_E0 + 15] == 40,
            "ANALOG's fourth EDIT page (the filter envelope) on the knobs");
     ctl.setSound (1, 9, 2);
     check (ctl.page[1] == Page::macro, "an engine without that page: back to its main one");
@@ -266,7 +272,8 @@ int runSelfTest()
 
     // PLAITS (Mutable Instruments' Plaits): every model sounds from the keyboard (the song stopped)
     {
-        const int plaits = se_engine_count() - 1;
+        int plaits = 0;
+        while (plaits < se_engine_count() && juce::String (se_engine_name (plaits)) != "PLAITS") ++plaits;
         int silent = 0;
         ctl.setSound (2, plaits, 0);                     // T2: VA LEAD, then each model
         for (int model = 0; model < 24; ++model)
@@ -286,6 +293,53 @@ int runSelfTest()
         ctl.setSound (2, 1, 0);
     }
 
+    // OBXD: every preset sounds
+    {
+        const int obxd = se_engine_count() - 1;
+        int silent = 0;
+        for (int p = 0; p < se_preset_count (obxd); ++p)
+        {
+            ctl.setSound (2, obxd, p);
+            run (0.3);
+            double mark = energy;
+            run (0.2);
+            const double quiet = energy - mark;
+            mark = energy;
+            ctl.audio.note (2, 60, true);
+            run (0.3);
+            ctl.audio.note (2, 60, false);
+            if (energy - mark < quiet * 2.0 + 1.0) { ++silent; std::printf ("      %s: %.2f / %.2f\n", se_preset_name (obxd, p), energy - mark, quiet); }
+            run (0.6);
+        }
+        check (juce::String (se_engine_name (obxd)) == "OBXD" && silent == 0, "OBXD: its presets all sound");
+    }
+
+    // the MOD stage: a Juno chorus is stereo, a vibrato sounds
+    {
+        ctl.setSound (2, 0, 13);                         // ANALOG WARM PAD, centred
+        ctl.audio.setParam (2, SE_P_PAN, 0);
+        for (int send : { (int) SE_P_CHOR, (int) SE_P_DLY, (int) SE_P_REV }) ctl.audio.setParam (2, send, 0);   // (the sends are stereo)
+        ctl.audio.setParam (2, SE_P_MTYPE, 0);
+        run (2.0);
+        double mark = side;
+        ctl.audio.note (2, 60, true);
+        run (0.5);
+        const double dry = side - mark;
+        ctl.audio.setParam (2, SE_P_MTYPE, 1);           // JUNO I
+        run (0.1);
+        mark = side;
+        run (0.5);
+        const double juno = side - mark;
+        ctl.audio.setParam (2, SE_P_MTYPE, 4);           // VIBRATO
+        run (0.1);
+        mark = energy;
+        run (0.5);
+        const double vib = energy - mark;
+        ctl.audio.note (2, 60, false);
+        ctl.audio.setParam (2, SE_P_MTYPE, 0);
+        run (0.5);
+        check (juno > dry * 10.0 + 1e-3 && vib > 1.0, "MOD: the Juno chorus is stereo, the vibrato sounds");
+    }
     std::printf ("%s\n", failures == 0 ? "self-test passed" : "self-test FAILED");
     return failures == 0 ? 0 : 1;
 }

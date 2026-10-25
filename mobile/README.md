@@ -123,6 +123,13 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
   bruit ; filtre LP24 (échelle à la Moog, saturée) ou LP12 / BP / HP ; sa propre enveloppe de filtre (F.ATK
   F.DEC F.SUS F.AMT). 29 presets (les anciens refaits, plus SAW+SUB BS, SYNC LEAD, JUNO PAD, POLY BRASS, SQR SYNC
   BS, RESO SWEEP, HOOVER). Les projets enregistrés avec l'ancien ANALOG sonnent autrement.
+- [x] Un 14ᵉ moteur à l'essai, **OBXD** : la voix d'Obxd (l'émulation d'Oberheim OB-X de Vadim Filatov), ses deux
+  oscillateurs (scie, pulse ; sync, cross-mod), son filtre multimode 12 dB / 24 dB et son enveloppe de filtre ;
+  12 presets. Licence à éclaircir avant une publication (`third_party/obxd/README.md`).
+- [x] Une page **Mod** par piste synthé, stéréo, après le filtre de piste : les chorus du Juno-60 (I, II, I+II) et
+  un vibrato façon Boss VB-2 (RATE, DEPTH : jusqu'où va la hauteur, RISE : sa montée après une note).
+- [x] La fiche Son par catégorie (Basses, Leads, Nappes, Claviers, Cloches, Plucks, Stabs, Percus, Textures), de
+  tous les moteurs, avant les moteurs eux-mêmes.
 - [x] Un 13ᵉ moteur, **PLAITS** : le Plaits de Mutable Instruments (MIT, `third_party/plaits`), ses 24 modèles
   (analogique, FM, wavetable, accords, voix, cordes, percussions…) réglés par MODEL, HARM, TIMB, MORPH, plus son
   low-pass gate et son enveloppe ; 27 presets. Quatre voix par piste au plus (le processeur).

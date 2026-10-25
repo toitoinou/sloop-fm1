@@ -18,7 +18,7 @@ constexpr int kLanes = 16;
 constexpr int kRows = 24;           // the piano roll's rows: the degrees of the key's scale, from its root
 constexpr int kKnobs = 4;
 constexpr int kMaxLocks = 24;       // a track's parameter locks (SLOOP's NLOCK)
-constexpr int kParamSlots = 80;     // room for every SLOOP track parameter (se_param_count(): 71)
+constexpr int kParamSlots = 96;     // room for every SLOOP track parameter (se_param_count(): 83)
 constexpr int kChainMax = 8;
 constexpr int16_t kNoLock = INT16_MIN;
 
@@ -113,7 +113,7 @@ struct Clip
 
 // The knobs show four SLOOP parameters at a time (core.h P_*), page by page: the mix, the engine's four main
 // ones (its macros, as the FM-1's HOME knobs), its two EDIT pages, the envelope, the effect sends
-enum class Page { mix, macro, edit1, edit2, edit3, edit4, env, fx };
+enum class Page { mix, macro, edit1, edit2, edit3, edit4, env, mod, fx };
 struct KnobDef { juce::String label; int param = -1, min = 0, max = 127, def = 0; bool valid = false; };
 constexpr int kParamMute = 40;      // core.h P_MUTE
 

@@ -5,8 +5,11 @@ namespace sloop
 {
 namespace
 {
-constexpr int kFormat = 2;                      // the file's version: a later app reads older files
-                                                // (2: clips up to 64 steps, 24 rows, the key, the swing)
+constexpr int kFormat = 3;                      // the file's version: a later app reads older files
+                                                // (2: clips up to 64 steps, 24 rows, the key, the swing;
+                                                //  3: the MOD stage's 4 parameters before the engine's)
+constexpr int kOldE0 = 63, kModParams = 4;       // (before format 3 the engine's parameters began at 63)
+int paramId (int id, int format) { return format < 3 && id >= kOldE0 ? id + kModParams : id; }
 
 juce::var stepVar (int a, int b, const StepData& x)
 {
@@ -56,7 +59,7 @@ juce::var clipVar (const Clip& c)
     return juce::var (o);
 }
 
-std::optional<Clip> readClip (const juce::var& v, int track)
+std::optional<Clip> readClip (const juce::var& v, int track, int format)
 {
     if (! v.isObject()) return std::nullopt;
     Clip c = Session::newClip (track, v["name"].toString());
@@ -89,8 +92,9 @@ std::optional<Clip> readClip (const juce::var& v, int track)
         }
     if (auto* locks = v["locks"].getArray())
         for (auto& l : *locks)
-            if (l.isArray() && l.size() >= 3 && (int) l[0] >= 0 && (int) l[0] < kMaxSteps && (int) l[1] >= 0 && (int) l[1] < kParamSlots)
-                c.data.setLock ((int) l[0], (int) l[1], (int) l[2]);
+            if (l.isArray() && l.size() >= 3 && (int) l[0] >= 0 && (int) l[0] < kMaxSteps && (int) l[1] >= 0
+                && paramId ((int) l[1], format) < kParamSlots)
+                c.data.setLock ((int) l[0], paramId ((int) l[1], format), (int) l[2]);
     return c;
 }
 } // namespace
@@ -133,6 +137,7 @@ std::optional<Project> Project::fromJson (const juce::String& text)
     if (! root.isObject() || tracks == nullptr || tracks->size() != kTracks || (int) root["format"] > kFormat)
         return std::nullopt;
     Project p;
+    const int format = (int) root["format"];
     p.name = root["name"].toString();
     p.bpm = juce::jlimit (60, 200, (int) root.getProperty ("bpm", 118));
     p.swing = juce::jlimit (0, 100, (int) root.getProperty ("swing", 0));
@@ -149,11 +154,14 @@ std::optional<Project> Project::fromJson (const juce::String& text)
         p.sounds[(size_t) t] = { (int) tr.getProperty ("engine", kDefaultSounds[(size_t) t].engine),
                                  (int) tr.getProperty ("preset", kDefaultSounds[(size_t) t].preset) };
         if (auto* params = tr["params"].getArray())
-            for (int i = 0; i < juce::jmin (kParamSlots, params->size()); ++i) p.params[(size_t) t][(size_t) i] = (*params)[i];
+        {
+            for (int i = 0; i < params->size(); ++i)
+                if (const int id = paramId (i, format); id < kParamSlots) p.params[(size_t) t][(size_t) id] = (*params)[i];
+        }
         else
             p.hasParams = false;
         if (auto* clips = tr["clips"].getArray())
-            for (int s = 0; s < clips->size(); ++s) p.session.at (t, s) = readClip ((*clips)[s], t);
+            for (int s = 0; s < clips->size(); ++s) p.session.at (t, s) = readClip ((*clips)[s], t, format);
     }
     return p;
 }
