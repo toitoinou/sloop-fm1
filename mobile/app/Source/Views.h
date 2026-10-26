@@ -160,7 +160,8 @@ private:
     Controller& ctl;
     bool qfg = true, chords = false;
     int octave = 0;
-    struct Down { int pad; float vel; std::vector<int> notes, rows; int track; };
+    struct Down { int pad; float vel; std::vector<int> notes, rows; int track; std::vector<int> repeats = {}; };
+    static constexpr int kRepeat = 10, kRate = 11;   // the header's REPEAT and rate buttons (headButton)
     std::map<int, Down> down;                        // finger -> what it plays
 };
 

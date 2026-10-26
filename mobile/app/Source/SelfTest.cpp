@@ -243,8 +243,35 @@ int runSelfTest()
         for (int st = 0; st < d.length; ++st) if (d.notes[(size_t) st].rows >> 20 & 1u) start = st;
         check (start >= 0 && d.noteLength (start, 20) >= 3 && d.noteLength (start, 20) <= 4,
                "a key held while recording: the note keeps its length");
+        // a knob turned while recording: the move is written on the steps it passes
+        ctl.setPage (Page::mix);
+        int written = 0;
+        for (int i = 0; i < 4; ++i)
+        {
+            runTo (1, 4 + i);
+            ctl.setKnob (1, 20 + i * 10);                 // FILTRE (the track's filter)
+        }
+        for (int st = 4; st < 8; ++st) written += d.lock (st, SE_P_TFLT) != kNoLock;
+        check (written == 4, "a knob turned while recording: its moves on the steps");
+        ctl.clearMotion (1, slot);
         ctl.toggleRecord();
         ctl.select (0);
+    }
+
+    // note repeat held while recording: a hit on every step it was held (1/16)
+    {
+        ctl.select (0);
+        ctl.toggleRecord();
+        const int slot = audio.playingSlot[0].load();
+        runTo (0, 2);
+        ctl.repeatRate = 2;
+        ctl.repeatPress (0, 15, 15, 90);                 // (lane 15, cowbell: empty in the demo)
+        for (int i = 0; i < 40; ++i) { run (0.02); ctl.poll(); }   // (about six steps)
+        ctl.repeatRelease (0, 15);
+        int hits = 0;
+        for (auto& x : ctl.session.at (0, slot)->data.lanes[15]) hits += x.on;
+        check (hits >= 4 && hits <= 7, "note repeat while recording: a hit on each step held");
+        ctl.toggleRecord();
     }
 
     // REC from stopped: a bar of clicks, then the song

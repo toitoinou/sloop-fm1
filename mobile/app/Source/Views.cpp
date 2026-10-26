@@ -303,6 +303,7 @@ void SessionGrid::clipMenu (int t, int s)
         m.addItem (2, "Dupliquer dessous");
         m.addItem (6, juce::String::fromUTF8 ("Doubler la longueur"), clip->data.length * 2 <= kMaxSteps);
         m.addItem (7, "Quantifier");
+        m.addItem (8, "Effacer les mouvements", clip->data.nLocks > 0);
         m.addItem (3, "Effacer");
     }
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (
@@ -316,6 +317,7 @@ void SessionGrid::clipMenu (int t, int s)
                          if (r == 5) ctl.pasteClip (t, s);
                          if (r == 6) ctl.doubleClip (t, s);
                          if (r == 7) ctl.quantizeClip (t, s);
+                         if (r == 8) ctl.clearMotion (t, s);
                      });
 }
 
@@ -690,10 +692,13 @@ void StepGrid::mouseUp (const juce::MouseEvent& e)
 // =================================================================== pads
 juce::Rectangle<int> PadsView::headButton (int i) const
 {
-    if (isDrum (ctl.sel)) return { i * 76, 0, 72, 30 };
-    if (i < 2) return { i * 56, 0, 52, 30 };          // Oct -, Oct +
-    if (i == 2) return { 120, 0, 84, 30 };            // Accords
-    return { 212, 0, juce::jmin (150, getWidth() - 212), 30 };   // the key
+    // on the right of every track: REPEAT and its rate
+    if (i == kRepeat) return { getWidth() - 132, 0, 72, 30 };
+    if (i == kRate) return { getWidth() - 56, 0, 56, 30 };
+    if (isDrum (ctl.sel)) return { i * 66, 0, 62, 30 };
+    if (i < 2) return { i * 50, 0, 46, 30 };          // Oct -, Oct +
+    if (i == 2) return { 100, 0, 76, 30 };            // Accords
+    return { 182, 0, juce::jmax (40, juce::jmin (150, getWidth() - 182 - 140)), 30 };   // the key
 }
 int PadsView::padAt (juce::Point<int> p) const
 {
@@ -731,6 +736,8 @@ void PadsView::paint (juce::Graphics& g)
         g.setFont (font (12.0f, true));
         g.drawText (text, r, juce::Justification::centred, true);
     };
+    button (headButton (kRepeat), "Repeat", ctl.repeatOn);
+    button (headButton (kRate), repeatName (ctl.repeatRate), false);
     if (drum)
     {
         button (headButton (0), "QFG", qfg);
@@ -771,6 +778,8 @@ void PadsView::paint (juce::Graphics& g)
 void PadsView::mouseDown (const juce::MouseEvent& e)
 {
     const bool drum = isDrum (ctl.sel);
+    if (headButton (kRepeat).contains (e.getPosition())) { ctl.repeatOn = ! ctl.repeatOn; repaint(); return; }
+    if (headButton (kRate).contains (e.getPosition())) { ctl.repeatRate = (ctl.repeatRate + 1) % 6; repaint(); return; }
     for (int i = 0; i < (drum ? 2 : 4); ++i)
         if (headButton (i).contains (e.getPosition()))
         {
@@ -795,6 +804,7 @@ void PadsView::mouseDown (const juce::MouseEvent& e)
         ctl.lane = snd;
         ctl.audio.drumHit (snd, v);
         ctl.recordHit (snd, v);                       // (REC on and playing: into the clip that plays)
+        if (ctl.repeatOn) { ctl.repeatPress (ctl.sel, snd, snd, v); d.repeats.push_back (snd); }
     }
     else
     {
@@ -803,7 +813,8 @@ void PadsView::mouseDown (const juce::MouseEvent& e)
             d.notes.push_back (ctl.note (ctl.sel, row));
             d.rows.push_back (row);
             ctl.audio.note (ctl.sel, d.notes.back(), true);
-            ctl.recordHit (row, v);
+            if (ctl.repeatOn) { ctl.repeatPress (ctl.sel, row, d.notes.back(), v); d.repeats.push_back (d.notes.back()); }
+            else ctl.recordHit (row, v);                // (a repeat: its hits recorded step by step)
         }
         if (d.notes.empty()) return;
     }
@@ -816,6 +827,7 @@ void PadsView::mouseUp (const juce::MouseEvent& e)
     if (it == down.end()) return;
     for (int n : it->second.notes) ctl.audio.note (it->second.track, n, false);
     for (int r : it->second.rows) ctl.recordRelease (it->second.track, r);   // (recording: the note's length)
+    for (int id : it->second.repeats) ctl.repeatRelease (it->second.track, id);
     down.erase (it);
     repaint();
 }

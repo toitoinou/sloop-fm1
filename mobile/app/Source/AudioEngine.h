@@ -32,6 +32,9 @@ public:
     void setKit (int kit);
     void drumHit (int lane, int velocity);
     void note (int track, int midi, bool on);
+    // note repeat: a drum lane (drum track) or a note hit again and again at a rate (repeatSteps), on the tempo's grid
+    // while the song plays; stop: the same track and id
+    void repeat (int track, int id, int velocity, int rate, bool on);
     // what a track plays: a chain of clips (one = a single clip, none = the track stops), from `when`; update:
     // new data for the clips of these rows, wherever they are (playing, or waiting for the bar)
     void setPlaylist (int track, When when, const std::vector<std::pair<int, const ClipData*>>& clips);
@@ -57,7 +60,7 @@ public:
     void audioDeviceStopped() override {}
 
 private:
-    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber };
+    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber, repeat };
     struct Command
     {
         Type type;
@@ -103,6 +106,10 @@ private:
     bool fill = false;
     int tempo = 118;
     Key key;
+    struct Repeat { int track = -1, id = 0, vel = 100; double interval = 0, next = 0, off = -1; };
+    std::array<Repeat, 8> repeats {};
+    double clock = 0;                                    // frames rendered (the repeats' time)
+    void runRepeats (int frames);
     bool countingIn = false;
     double countFrames = 0;
     std::array<int, kTracks> framesInStep {};

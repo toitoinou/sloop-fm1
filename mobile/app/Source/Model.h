@@ -17,11 +17,22 @@ constexpr int kBar = 16;            // a bar's steps: a new clip's length, and w
 constexpr int kLanes = 16;
 constexpr int kRows = 24;           // the piano roll's rows: the degrees of the key's scale, from its root
 constexpr int kKnobs = 4;
-constexpr int kMaxLocks = 24;       // a track's parameter locks (SLOOP's NLOCK)
+constexpr int kMaxLocks = 256;      // a clip's parameter locks (steps held, knob moves recorded; the engine gets a few steps' at a time)
 constexpr int kParamSlots = 96;     // room for every SLOOP track parameter (se_param_count(): 83)
 constexpr int kChainMax = 8;
 constexpr int16_t kNoLock = INT16_MIN;
 
+// note repeat's rates: 1/4 1/8 1/16 1/32 1/8T 1/16T, as steps (a 1/16 each)
+inline double repeatSteps (int rate)
+{
+    static const double s[] = { 4.0, 2.0, 1.0, 0.5, 4.0 / 3.0, 2.0 / 3.0 };
+    return s[juce::jlimit (0, 5, rate)];
+}
+inline const char* repeatName (int rate)
+{
+    static const char* n[] = { "1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T" };
+    return n[juce::jlimit (0, 5, rate)];
+}
 inline int engineTrack (int t) { return t == 0 ? kTracks - 1 : t - 1; }   // (SLOOP's drum track is its last)
 inline const char* trackId (int t)
 {
@@ -58,7 +69,7 @@ struct ClipData
     std::array<std::array<StepData, kMaxSteps>, kLanes> lanes {};   // the drum track: [lane][step]
     std::array<StepData, kMaxSteps> notes {};                       // a synth track
     std::array<LockData, kMaxLocks> locks {};                       // parameter locks, any sound parameter
-    uint8_t nLocks = 0;
+    uint16_t nLocks = 0;
     std::array<std::array<uint8_t, kRows>, kMaxSteps> noteLen {};   // a synth note's length in steps ([start][row]; 0, 1: one)
 
     // a synth note held over several steps: it starts on a step (its row's bit) and lasts noteLength steps

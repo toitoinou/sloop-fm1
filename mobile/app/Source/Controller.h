@@ -49,6 +49,8 @@ public:
     bool recording = false;
     struct Pending { int track, slot, step; };
     struct RecHeld { int track, slot, step, row; };
+    struct HeldRepeat { int track, row, id, vel, lastBarStep; };
+    std::vector<HeldRepeat> heldRepeats;
     std::vector<RecHeld> recordedHeld;                   // synth notes recorded, their keys still down
     std::vector<Pending> pendingRecord;                  // recorded on a step not played yet: sent once it has passed
     int bpm = 118;
@@ -200,6 +202,7 @@ public:
     void poll()
     {
         bool any = false;
+        recordRepeats();
         if (audio.paramSerial.load() != seenParamSerial) { readParams(); any = true; }   // a sound brought its own values
         for (auto it = pendingRecord.begin(); it != pendingRecord.end();)
             if (audio.position[it->track].load() != it->step || ! playing)
@@ -489,7 +492,27 @@ public:
         }
         params[(size_t) sel][(size_t) d.param] = v;
         audio.setParam (sel, d.param, v);
+        recordMotion (d.param, v);
         notify();
+    }
+    // REC on and playing: a knob turned is written into the clip that plays, on the step playing (a lock), so the
+    // move plays again on every pass (steps without a move keep the knob's value)
+    void recordMotion (int param, int value)
+    {
+        if (! recording || ! playing || audio.countIn.load() > 0) return;
+        const int slot = audio.playingSlot[sel].load(), pos = audio.position[sel].load();
+        if (slot < 0 || pos < 0 || ! session.at (sel, slot)) return;
+        auto& d = session.at (sel, slot)->data;
+        if (d.lock (pos, param) == value) return;
+        remember ("rec");
+        if (d.setLock (pos, param, value)) clipEdited (sel, slot);
+    }
+    void clearMotion (int t, int s)                      // every lock of a clip (its recorded moves, its held steps')
+    {
+        if (! session.at (t, s)) return;
+        remember ("clear");
+        session.at (t, s)->data.nLocks = 0;
+        clipEdited (t, s);
     }
     void resetKnob (int k)
     {
@@ -561,6 +584,62 @@ public:
         else clipEdited (t, slot);
         notify();
     }
+    // ---- note repeat (the pads): a pad held plays again and again at the rate, recorded as steps when REC is on
+    bool repeatOn = false;
+    int repeatRate = 2;                                  // repeatSteps: 1/16
+    void repeatPress (int t, int row, int id, int velocity)
+    {
+        audio.repeat (t, id, velocity, repeatRate, true);
+        heldRepeats.push_back ({ t, row, id, velocity, audio.barStep[t].load() });
+    }
+    void repeatRelease (int t, int id)
+    {
+        audio.repeat (t, id, 0, repeatRate, false);
+        heldRepeats.erase (std::remove_if (heldRepeats.begin(), heldRepeats.end(),
+                                           [t, id] (const HeldRepeat& h) { return h.track == t && h.id == id; }),
+                           heldRepeats.end());
+    }
+    // the steps passed while a repeat is held (REC on): its hits on them, a hit off the grid as a nudge, two in a
+    // step as a ratchet (the triplets, 1/32)
+    void recordRepeats()
+    {
+        for (auto& h : heldRepeats)
+        {
+            const int bar = audio.barStep[h.track].load(), pos = audio.position[h.track].load();
+            const int slot = audio.playingSlot[h.track].load();
+            if (bar < 0 || bar == h.lastBarStep) continue;
+            const int passed = h.lastBarStep < 0 ? 0 : (bar - h.lastBarStep + kBar) % kBar;
+            h.lastBarStep = bar;
+            if (! recording || ! playing || audio.countIn.load() > 0 || slot < 0 || pos < 0 || ! session.at (h.track, slot)) continue;
+            auto& d = session.at (h.track, slot)->data;
+            const double rate = repeatSteps (repeatRate);
+            for (int k = passed; k >= 1; --k)            // the steps just finished (the last one: one step back)
+            {
+                const int b = (bar - k + kBar) % kBar, st = (pos - k + 2 * d.length) % d.length;
+                int n = 0;
+                double first = -1;
+                for (double x = std::ceil (b / rate) * rate; x < b + 1.0 - 1e-9; x += rate, ++n)
+                    if (first < 0) first = x - b;
+                if (n == 0) continue;
+                remember ("rec");
+                const int nudge = n > 1 ? 0 : juce::jlimit (0, 3, juce::roundToInt (first * 6.0));
+                StepData* x = nullptr;
+                if (d.drum) x = &d.lanes[(size_t) h.row][(size_t) st];
+                else
+                {
+                    x = &d.notes[(size_t) st];
+                    x->rows |= 1u << h.row;
+                    d.noteLen[(size_t) st][(size_t) h.row] = 1;
+                }
+                x->on = 1;
+                x->vel = (uint8_t) h.vel;
+                x->ratchet = (uint8_t) juce::jlimit (1, 4, n);
+                x->nudge = (int8_t) nudge;
+            }
+            clipEdited (h.track, slot);
+        }
+    }
+
     // a key let go while recording: the note it recorded lasts until here (to the nearest step)
     void recordRelease (int t, int row)
     {

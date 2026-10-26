@@ -69,6 +69,11 @@ void AudioEngine::note (int track, int midi, bool on)
 {
     Command c; c.type = Type::note; c.a = track; c.b = midi; c.c = on; post (std::move (c));
 }
+void AudioEngine::repeat (int track, int id, int velocity, int rate, bool on)
+{
+    Command c; c.type = Type::repeat; c.a = track; c.b = id; c.c = velocity; c.n = rate; c.when = on ? When::now : When::update;
+    post (std::move (c));
+}
 void AudioEngine::setPlaylist (int track, When when, const std::vector<std::pair<int, const ClipData*>>& clips)
 {
     Command c;
@@ -138,6 +143,7 @@ void AudioEngine::renderEngineBlock()
     auto* r = staging.getWritePointer (1, staged);
     for (int i = 0; i < frames; ++i) { l[i] = o[2 * i]; r[i] = o[2 * i + 1]; }
     staged += frames;
+    runRepeats (frames);
     if (countingIn)
     {
         // four beats of clicks at the tempo, then PLAY (the first click came with the command)
@@ -267,6 +273,32 @@ void AudioEngine::apply (Command& c)
         case Type::kit: se_set_kit (c.a); break;
         case Type::hit: se_drum_hit (c.a, c.b); break;
         case Type::note: se_note (engineTrack (c.a), c.b, c.c); break;
+        case Type::repeat:
+        {
+            Repeat* slot = nullptr;
+            for (auto& r : repeats) if (r.track == c.a && r.id == c.b) slot = &r;
+            if (c.when == When::update)                  // let go: the last note ends
+            {
+                if (slot != nullptr)
+                {
+                    if (! isDrum (c.a) && slot->off >= 0) se_note (engineTrack (c.a), c.b, 0);
+                    *slot = {};
+                }
+                break;
+            }
+            if (slot == nullptr) for (auto& r : repeats) if (r.track < 0) { slot = &r; break; }
+            if (slot == nullptr) break;
+            const double step = (double) se_sample_rate() * 15.0 / tempo, interval = step * repeatSteps (c.n);
+            double next = clock + interval;              // (the first hit is the pad's own)
+            if (running)                                 // on the grid: the next multiple of the rate since PLAY
+            {
+                const auto& s = tracks[(size_t) c.a];
+                const double since = (double) juce::jmax ((int64_t) 0, s.cur) * step + framesInStep[(size_t) c.a];
+                next = clock + (std::floor (since / interval) + 1.0) * interval - since;
+            }
+            *slot = { c.a, c.b, c.c, interval, next, isDrum (c.a) ? -1.0 : clock + interval * 0.5 };
+            break;
+        }
         case Type::renumber:
             for (int t = 0; t < kTracks; ++t)
             {
@@ -306,6 +338,21 @@ void AudioEngine::apply (Command& c)
             rewrite (c.a);
             break;
         }
+    }
+}
+
+void AudioEngine::runRepeats (int frames)
+{
+    clock += frames;
+    for (auto& r : repeats)
+    {
+        if (r.track < 0) continue;
+        if (! isDrum (r.track) && r.off >= 0 && clock >= r.off) { se_note (engineTrack (r.track), r.id, 0); r.off = -1; }
+        if (clock < r.next) continue;
+        if (isDrum (r.track)) se_drum_hit (r.id, r.vel);
+        else { se_note (engineTrack (r.track), r.id, 1); r.off = clock + r.interval * 0.5; }   // (half the interval long)
+        r.next += r.interval;
+        if (r.next < clock) r.next = clock + r.interval;   // (a tempo change: no burst to catch up)
     }
 }
 
