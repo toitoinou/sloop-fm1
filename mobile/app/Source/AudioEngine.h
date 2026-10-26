@@ -31,7 +31,12 @@ public:
     void setParams (int track, const std::array<int, kParamSlots>& values);   // every parameter at once (a project)
     void setKit (int kit);
     void drumHit (int lane, int velocity);
-    void note (int track, int midi, bool on);
+    void note (int track, int midi, bool on, int velocity = 100);
+    // MIDI in: the notes go straight to the audio thread (no detour through the UI), onto the track selected
+    juce::MidiMessageCollector midiIn;
+    juce::MidiBuffer midiBlock;                          // (its room made once: no allocation on the audio thread)
+    std::array<int8_t, 128> midiNoteTrack;               // the track each MIDI note went to (its note off goes there too)
+    std::atomic<int> midiTrack { 0 };
     // note repeat: a drum lane (drum track) or a note hit again and again at a rate (repeatSteps), on the tempo's grid
     // while the song plays; stop: the same track and id
     void repeat (int track, int id, int velocity, int rate, bool on);

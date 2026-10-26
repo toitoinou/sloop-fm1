@@ -65,6 +65,7 @@ target_sources(SloopTouch PRIVATE
     Source/Project.cpp
     Source/ProjectSheet.cpp
     Source/DawProject.cpp
+    Source/Midi.cpp
     Source/SelfTest.cpp)
 target_compile_definitions(SloopTouch PRIVATE
     JUCE_WEB_BROWSER=0

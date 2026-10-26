@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "Views.h"
+#include "Midi.h"
 #include "sloop_engine.h"
 
 namespace sloop
@@ -812,7 +813,7 @@ void PadsView::mouseDown (const juce::MouseEvent& e)
         {
             d.notes.push_back (ctl.note (ctl.sel, row));
             d.rows.push_back (row);
-            ctl.audio.note (ctl.sel, d.notes.back(), true);
+            ctl.audio.note (ctl.sel, d.notes.back(), true, v);
             if (ctl.repeatOn) { ctl.repeatPress (ctl.sel, row, d.notes.back(), v); d.repeats.push_back (d.notes.back()); }
             else ctl.recordHit (row, v);                // (a repeat: its hits recorded step by step)
         }
@@ -1627,8 +1628,8 @@ juce::String engineAbout (const juce::String& name)
 
 // =================================================================== the settings
 SettingsSheet::SettingsSheet (Controller& c, std::function<void()> close, std::function<juce::String()> info,
-                              std::function<void()> nextBuffer)
-    : ctl (c), onClose (std::move (close)), audioInfo (std::move (info))
+                              std::function<void()> nextBuffer, std::function<juce::String()> midi)
+    : ctl (c), onClose (std::move (close)), audioInfo (std::move (info)), midiInfo (std::move (midi))
 {
     view.setViewedComponent (&content, false);
     view.setScrollBarsShown (false, false, true, false);
@@ -1637,7 +1638,7 @@ SettingsSheet::SettingsSheet (Controller& c, std::function<void()> close, std::f
     addAndMakeVisible (ok);
     ok.onClick = [this] { onClose(); };
     ok.setToggleState (true, juce::dontSendNotification);
-    for (auto* text : { "Tonalité", "Gamme", "Swing", "Jeu", "Audio" })
+    for (auto* text : { "Tonalité", "Gamme", "Swing", "Jeu", "Audio", "MIDI (notes sur la piste choisie, CC 21-24 / 70-73 : les boutons)" })
     {
         auto* l = labels.add (new Label());
         l->text = juce::String::fromUTF8 (text);
@@ -1666,6 +1667,13 @@ SettingsSheet::SettingsSheet (Controller& c, std::function<void()> close, std::f
     quantize.onClick = [this] { auto p = ctl.prefs; p.quantizeRec = ! p.quantizeRec; ctl.setPrefs (p); sync(); };
     buffer.onClick = [this, nextBuffer] { nextBuffer(); sync(); };
     for (auto* b : { &metronome, &countIn, &quantize, &buffer }) content.addAndMakeVisible (b);
+    clockOut.onClick = [this] { auto p = ctl.prefs; p.midiClockOut = ! p.midiClockOut; ctl.setPrefs (p); sync(); };
+    bluetooth.onClick = [] { MidiHub::pairBluetooth(); };
+    midiInputs.onClick = [this] { sync(); };          // (a tap: the list again)
+    for (auto* b : { &midiInputs, &clockOut, &bluetooth }) content.addAndMakeVisible (b);
+   #if ! (JUCE_ANDROID || JUCE_IOS)
+    bluetooth.setVisible (false);
+   #endif
     sync();
 }
 void SettingsSheet::Label::paint (juce::Graphics& g)
@@ -1683,6 +1691,8 @@ void SettingsSheet::sync()
     countIn.setToggleState (ctl.prefs.countIn, juce::dontSendNotification);
     quantize.setToggleState (ctl.prefs.quantizeRec, juce::dontSendNotification);
     buffer.setButtonText (audioInfo ? audioInfo() : juce::String());
+    midiInputs.setButtonText (midiInfo ? midiInfo() : juce::String());
+    clockOut.setToggleState (ctl.prefs.midiClockOut, juce::dontSendNotification);
     repaint();
 }
 juce::Rectangle<int> SettingsSheet::panel() const
@@ -1718,6 +1728,10 @@ void SettingsSheet::resized()
     label (2); swing.setBounds (0, y, w, bh); y += bh + 8;
     label (3); flow ({ &metronome, &countIn, &quantize }, 180);
     label (4); flow ({ &buffer }, 200);
+    label (5);
+    juce::Array<juce::Component*> midiRow { &midiInputs, &clockOut };
+    if (bluetooth.isVisible()) midiRow.add (&bluetooth);
+    flow (midiRow, 180);
     content.setSize (w, y);
 }
 void SettingsSheet::paint (juce::Graphics& g)

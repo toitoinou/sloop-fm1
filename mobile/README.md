@@ -136,7 +136,14 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [ ] L'écran FX (surface XY, les 27 effets punch-in de SLOOP).
 - [x] Enregistrer ses sessions : projets dans l'appli, sauvegarde automatique, export / import `.sloop`.
 - [x] Notes tenues dans la vue Notes : glisser une note l'allonge (elle tient, au lieu d'être rejouée à chaque pas).
-- [ ] Note repeat, un mixeur, plus de 4 pistes, des samples à soi.
+- [x] Huit pistes (DR et T1..T7 : le moteur prend son nombre de parties à la compilation, 32 voix ensemble).
+- [x] Les mouvements de boutons enregistrés (REC : un bouton tourné s'écrit sur les pas qu'il traverse).
+- [x] Note repeat sur les pads (1/4 à 1/32, triolets), calé sur le tempo, enregistré.
+- [x] Un mixeur (volume, pan, envois, mute, solo, vumètres ; le master : volume, filtre DJ, DUST, DUCK).
+- [x] Enregistrer la sortie en WAV (REC du master dans le mixeur), puis la partager.
+- [x] MIDI : les entrées (USB, Bluetooth après appairage) jouent la piste choisie et s'enregistrent, CC 21-24 /
+  70-73 sur les boutons, START / STOP ; l'horloge MIDI en sortie (Réglages).
+- [ ] Ableton Link, l'export audio piste par piste.
 - [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
 - [ ] Une piste guitare (NAM / TONE3000).
 

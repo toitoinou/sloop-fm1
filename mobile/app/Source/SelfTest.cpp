@@ -367,7 +367,7 @@ int runSelfTest()
         const auto file = juce::File::createTempFile (".wav");
         const bool started = audio.startRecording (file);
         ctl.audio.note (2, 60, true);
-        run (1.0);
+        for (int i = 0; i < 5; ++i) { run (0.2); juce::Thread::sleep (30); }   // (faster than real time: the writer keeps up)
         ctl.audio.note (2, 60, false);
         audio.stopRecording();
         juce::AudioFormatManager formats;
@@ -378,6 +378,33 @@ int runSelfTest()
                "recording the output: a WAV as long as the time recorded");
         reader.reset();
         file.deleteFile();
+    }
+
+    // MIDI in: a note plays the track selected (from the audio thread), CC 70 turns its first knob
+    {
+        ctl.select (2);
+        ctl.setSound (2, 0, 2);
+        run (0.3);
+        audio.peak[2].exchange (0);
+        auto on = juce::MidiMessage::noteOn (1, 48, (juce::uint8) 110);
+        on.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001);
+        audio.midiIn.addMessageToQueue (on);
+        run (0.3);
+        const int heard = audio.peak[2].exchange (0);
+        auto off = juce::MidiMessage::noteOff (1, 48);
+        off.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001);
+        audio.midiIn.addMessageToQueue (off);
+        ctl.setPage (Page::mix);
+        ctl.midiCC (70, 0);
+        const int level = ctl.params[2][(size_t) SE_P_LEVEL];
+        check (heard > 0 && level == 0, "MIDI in: a note plays the track selected, a CC turns a knob");
+        ctl.midiCC (70, 104);
+        ctl.select (0);
+        run (0.5);
+        audio.peak[2].exchange (0);
+        run (0.5);
+        const int afterOff = audio.peak[2].exchange (0);
+        check (afterOff == 0, "MIDI in: its note off ends the note (the track selected since changed)");
     }
 
     // OBXD: every preset sounds

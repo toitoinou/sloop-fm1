@@ -265,4 +265,10 @@ void se_drum_hit(int lane, int velocity)
 {
     if (lane >= 0 && lane < DRUM_LANES) drum_on(LANE_NOTE[lane], (uint32_t)clamp(velocity, 1, 127));
 }
+void se_note_vel(int track, int note, int velocity)
+{
+    if (track < 0 || track >= NTRK || note < 0 || note > 127) return;
+    if (velocity > 0) input_on(&trk[track], (uint32_t)note, (uint32_t)clamp(velocity, 1, 127));
+    else input_off(&trk[track], (uint32_t)note);
+}
 void se_note(int track, int note, int on) { preview_note((uint32_t)track, (uint32_t)note, (uint32_t)(on != 0)); }

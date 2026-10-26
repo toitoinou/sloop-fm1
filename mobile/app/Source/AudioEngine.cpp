@@ -19,6 +19,9 @@ uint32_t mix (uint32_t h)
 AudioEngine::AudioEngine()
 {
     queue.resize ((size_t) fifo.getTotalSize());
+    midiBlock.ensureSize (8192);
+    midiNoteTrack.fill (-1);
+    midiIn.reset (44100.0);
     for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; barStep[t] = -1; hits[t] = 0; stepPhase[t] = 0.0f; peak[t] = 0; }
     se_init();
     se_set_bpm (tempo);
@@ -65,9 +68,9 @@ void AudioEngine::drumHit (int lane, int velocity)
 {
     Command c; c.type = Type::hit; c.a = lane; c.b = velocity; post (std::move (c));
 }
-void AudioEngine::note (int track, int midi, bool on)
+void AudioEngine::note (int track, int midi, bool on, int velocity)
 {
-    Command c; c.type = Type::note; c.a = track; c.b = midi; c.c = on; post (std::move (c));
+    Command c; c.type = Type::note; c.a = track; c.b = midi; c.c = on ? juce::jlimit (1, 127, velocity) : 0; post (std::move (c));
 }
 bool AudioEngine::startRecording (const juce::File& file)
 {
@@ -81,7 +84,7 @@ bool AudioEngine::startRecording (const juce::File& file)
     if (writer == nullptr) return false;
     stream.release();                                    // (the writer owns it now)
     writerThread.startThread();
-    threaded = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (writer, writerThread, 32768);
+    threaded = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (writer, writerThread, 1 << 17);   // (~3 s of room)
     recordedFrames = 0;
     const juce::ScopedLock sl (writerLock);
     activeWriter = threaded.get();
@@ -126,6 +129,7 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 void AudioEngine::prepare (double sampleRate, int blockSize)
 {
     deviceRate = sampleRate;
+    midiIn.reset (sampleRate);
     staging.setSize (2, juce::jmax (16384, blockSize * 4));
     staged = 0;
     for (auto& i : interp) i.reset();
@@ -140,6 +144,33 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
     for (int i = 0; i < n2; ++i) apply (queue[(size_t) (s2 + i)]);
     fifo.finishedRead (n1 + n2);
 
+    {   // MIDI in: the notes onto the track selected (the drums: their General MIDI notes)
+        auto& midi = midiBlock;
+        midi.clear();                                    // (the collector adds to it: last block's out first)
+        midiIn.removeNextBlockOfMessages (midi, numSamples);
+        const int t = juce::jlimit (0, kTracks - 1, midiTrack.load());
+        for (const auto m : midi)
+        {
+            const auto msg = m.getMessage();
+            if (! msg.isNoteOnOrOff()) continue;
+            const int note = msg.getNoteNumber();
+            if (! msg.isNoteOn())                        // a note off: to the track its note began on
+            {
+                if (const int on = midiNoteTrack[(size_t) note]; on >= 0) se_note_vel (engineTrack (on), note, 0);
+                midiNoteTrack[(size_t) note] = -1;
+            }
+            else if (isDrum (t))
+            {
+                for (int lane = 0; lane < kLanes; ++lane)
+                    if (se_lane_note (lane) == note) { se_drum_hit (lane, msg.getVelocity()); break; }
+            }
+            else
+            {
+                se_note_vel (engineTrack (t), note, msg.getVelocity());
+                midiNoteTrack[(size_t) note] = (int8_t) t;
+            }
+        }
+    }
     const double ratio = (double) se_sample_rate() / deviceRate;
     const int needed = (int) std::ceil (numSamples * ratio) + 4;
     while (staged < needed && staged + (int) se_block_frames() <= staging.getNumSamples())
@@ -320,7 +351,7 @@ void AudioEngine::apply (Command& c)
             break;
         case Type::kit: se_set_kit (c.a); break;
         case Type::hit: se_drum_hit (c.a, c.b); break;
-        case Type::note: se_note (engineTrack (c.a), c.b, c.c); break;
+        case Type::note: se_note_vel (engineTrack (c.a), c.b, c.c); break;
         case Type::repeat:
         {
             Repeat* slot = nullptr;

@@ -73,7 +73,7 @@ public:
     bool editingPlaying() const { return audio.playingSlot[sel].load() == editSlot[(size_t) sel]; }
     void notify() { if (changed) changed(); }
 
-    void select (int t) { sel = t; held.clear(); notify(); }
+    void select (int t) { sel = t; held.clear(); audio.midiTrack = t; notify(); }
     void togglePlay()
     {
         playing = ! playing;
@@ -640,6 +640,31 @@ public:
         soloMask ^= 1u << t;
         audio.setSolo (soloMask);
         notify();
+    }
+
+    // ---- MIDI (Midi.h): what the audio thread already plays goes into the clip when REC is on; CC 21..24 and
+    // 70..73 turn the four knobs of the page shown
+    void midiNote (int note, int velocity)
+    {
+        if (isDrum (sel))
+        {
+            if (velocity > 0)
+                for (int l = 0; l < kLanes; ++l)
+                    if (se_lane_note (l) == note) { lane = l; recordHit (l, velocity); notify(); break; }
+            return;
+        }
+        int row = 0, best = 1000;                        // the piano roll's row nearest to the note (the key's)
+        for (int r = 0; r < kRows; ++r)
+            if (const int d = std::abs (rowNote (sel, r, key) - note); d < best) { best = d; row = r; }
+        if (velocity > 0) recordHit (row, velocity);
+        else recordRelease (sel, row);
+    }
+    void midiCC (int cc, int value)
+    {
+        const int k = cc >= 21 && cc <= 24 ? cc - 21 : cc >= 70 && cc <= 73 ? cc - 70 : -1;
+        if (k < 0) return;
+        const auto d = knobDefs()[(size_t) k];
+        if (d.valid) setKnob (k, d.min + juce::roundToInt ((float) value * (float) (d.max - d.min) / 127.0f));
     }
 
     // ---- note repeat (the pads): a pad held plays again and again at the rate, recorded as steps when REC is on

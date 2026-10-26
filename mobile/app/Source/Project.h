@@ -32,6 +32,7 @@ struct Prefs
     bool metronome = false;
     bool countIn = true;                         // REC from stopped: a bar of clicks first
     bool quantizeRec = true;                     // a hit recorded on the nearest step (else between steps)
+    bool midiClockOut = false;                   // the MIDI clock and START / STOP out
 };
 
 // the projects kept in the app (userApplicationDataDirectory/SLOOP Touch/projects/*.sloop)

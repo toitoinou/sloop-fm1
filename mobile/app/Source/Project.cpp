@@ -218,6 +218,7 @@ Prefs readPrefs()
     p.metronome = v.getProperty ("metronome", p.metronome);
     p.countIn = v.getProperty ("countIn", p.countIn);
     p.quantizeRec = v.getProperty ("quantizeRec", p.quantizeRec);
+    p.midiClockOut = v.getProperty ("midiClockOut", p.midiClockOut);
     return p;
 }
 void writePrefs (const Prefs& p)
@@ -226,6 +227,7 @@ void writePrefs (const Prefs& p)
     o->setProperty ("metronome", p.metronome);
     o->setProperty ("countIn", p.countIn);
     o->setProperty ("quantizeRec", p.quantizeRec);
+    o->setProperty ("midiClockOut", p.midiClockOut);
     folder().getChildFile ("prefs.json").replaceWithText (juce::JSON::toString (juce::var (o)));
 }
 } // namespace store

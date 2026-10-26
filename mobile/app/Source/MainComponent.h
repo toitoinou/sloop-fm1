@@ -3,6 +3,7 @@
 // the middle (Session, Grille, Pads), the device column on the right (FILL, the knobs); in portrait stacked.
 #pragma once
 #include "Views.h"
+#include "Midi.h"
 
 namespace sloop
 {
@@ -44,6 +45,7 @@ private:
     juce::AudioDeviceManager devices;
     AudioEngine audio;
     Controller ctl { audio };
+    MidiHub midi { ctl };
 
     juce::TextButton playButton { ">" }, recButton { "Rec" }, tapButton { "TAP" }, stopClips { "Stop clips" };
     juce::TextButton projectButton { "Projet" }, clickButton { "Clic" };

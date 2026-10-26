@@ -153,6 +153,7 @@ void MainComponent::refresh()
     playButton.setToggleState (ctl.playing, juce::dontSendNotification);
     recButton.setToggleState (ctl.recording, juce::dontSendNotification);
     clickButton.setToggleState (ctl.prefs.metronome, juce::dontSendNotification);
+    midi.setClockOut (ctl.prefs.midiClockOut);
     undoButton.setEnabled (ctl.canUndo());
     redoButton.setEnabled (ctl.canRedo());
     tabGrid.setButtonText (isDrum (ctl.sel) ? "Grille" : "Notes");
@@ -200,7 +201,8 @@ void MainComponent::openSettings()
     showSheet (std::make_unique<SettingsSheet> (ctl, [this]
     {
         juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
-    }, [this] { return audioText(); }, [this] { nextBufferSize(); }));
+    }, [this] { return audioText(); }, [this] { nextBufferSize(); },
+       [this] { const auto names = midi.inputNames(); return names.isEmpty() ? juce::String::fromUTF8 ("Aucune entrée MIDI") : names.joinIntoString (", "); }));
 }
 void MainComponent::openSound()
 {

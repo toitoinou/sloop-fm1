@@ -26,6 +26,8 @@
       <FILE id="Fi0017" name="ProjectSheet.cpp" compile="1" resource="0" file="Source/ProjectSheet.cpp"/>
       <FILE id="Fi0018" name="DawProject.h" compile="0" resource="0" file="Source/DawProject.h"/>
       <FILE id="Fi0019" name="DawProject.cpp" compile="1" resource="0" file="Source/DawProject.cpp"/>
+      <FILE id="Fi0063" name="Midi.h" compile="0" resource="0" file="Source/Midi.h"/>
+      <FILE id="Fi0064" name="Midi.cpp" compile="1" resource="0" file="Source/Midi.cpp"/>
       <FILE id="Fi0009" name="Model.h" compile="0" resource="0" file="Source/Model.h"/>
       <FILE id="Fi0010" name="Theme.h" compile="0" resource="0" file="Source/Theme.h"/>
     </GROUP>
@@ -95,7 +97,8 @@
   <JUCEOPTIONS JUCE_USE_ANDROID_OBOE="1"/>
   <EXPORTFORMATS>
     <ANDROIDSTUDIO targetFolder="Builds/Android" androidMinimumSDK="26" androidTargetSDK="34"
-                   androidEnableContentSharing="1"
+                   androidEnableContentSharing="1" androidBluetoothScanNeeded="1"
+                   androidBluetoothConnectNeeded="1"
                    androidScreenOrientation="unspecified"
                    extraCompilerFlags="-fwrapv -fno-strict-aliasing">
       <CONFIGURATIONS>

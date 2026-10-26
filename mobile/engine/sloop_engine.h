@@ -102,6 +102,7 @@ int se_global_describe(int id, int *min, int *max, int *def, const char **label)
 /* playing live */
 void se_drum_hit(int lane, int velocity);
 void se_note(int track, int note, int on);
+void se_note_vel(int track, int note, int velocity);         /* a note played with its velocity (1..127); 0: let go */
 
 #ifdef __cplusplus
 }
