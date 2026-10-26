@@ -13,8 +13,8 @@ double now() { return juce::Time::getMillisecondCounterHiRes(); }
 juce::Colour mixed (juce::Colour c, float amount, juce::Colour onto = theme::cell) { return onto.interpolatedWith (c, amount); }
 const char* kLaneNames[kLanes] = { "Kick", "Kick 2", "Snare", "Clap", "Hat", "Open hat", "Pedal", "Rim",
                                    "Snare 2", "Tom bas", "Tom haut", "Crash", "Ride", "Shaker", "Conga", "Cowbell" };
-const char* kTrackIds[kTracks] = { "DR", "T1", "T2", "T3" };
-const char* kTrackNames[kTracks] = { "Drums", "Bass", "Keys", "Lead" };
+struct { const char* operator[] (int t) const { return trackId (t); } } kTrackIds;
+struct { const char* operator[] (int t) const { return trackName (t); } } kTrackNames;
 juce::String condLabel (Cond c)
 {
     switch (c)
@@ -36,6 +36,11 @@ juce::Rectangle<int> TrackRail::slot (int t) const
     auto r = getLocalBounds();
     const bool vertical = getHeight() > getWidth();
     const int n = kTracks, g = theme::gap * 3;
+    if (vertical && (r.getHeight() - g * (n - 1)) / n < 46)   // (a phone: two columns of four)
+    {
+        const int rows = (n + 1) / 2, w = (r.getWidth() - g) / 2, h = (r.getHeight() - g * (rows - 1)) / rows;
+        return { (t / rows) * (w + g), (t % rows) * (h + g), w, h };
+    }
     if (vertical)
     {
         const int h = (r.getHeight() - g * (n - 1)) / n;
@@ -111,7 +116,9 @@ void TrackRail::mouseUp (const juce::MouseEvent&)
 // =================================================================== the session
 juce::Rectangle<int> SessionGrid::cellRect (int t, int r) const
 {
-    return { t * (colW() + theme::gap), r * (rowH + theme::gap), colW(), rowH };
+    const int v = t - first;
+    if (v < 0 || v >= shown()) return {};           // (a track on another page)
+    return { v * (colW() + theme::gap), r * (rowH + theme::gap), colW(), rowH };
 }
 juce::Rectangle<int> SessionGrid::sceneRect (int r) const
 {
@@ -130,6 +137,7 @@ void SessionGrid::paint (juce::Graphics& g)
     {
         for (int t = 0; t < kTracks; ++t)
         {
+            if (cellRect (t, r).isEmpty()) continue;
             auto box = cellRect (t, r).toFloat();
             auto& clip = ctl.session.at (t, r);
             if (! clip)
@@ -342,11 +350,10 @@ void SessionView::resized()
 }
 void SessionView::paint (juce::Graphics& g)
 {
-    const int sceneW = getWidth() < 420 ? 44 : 58;
-    const int colW = (getWidth() - sceneW - kTracks * theme::gap) / kTracks;
-    for (int t = 0; t < kTracks; ++t)
+    const int sceneW = grid.sceneW(), colW = grid.colW();
+    for (int t = grid.first; t < grid.first + grid.shown() && t < kTracks; ++t)
     {
-        juce::Rectangle<int> r (t * (colW + theme::gap), 0, colW, headH);
+        juce::Rectangle<int> r ((t - grid.first) * (colW + theme::gap), 0, colW, headH);
         g.setColour (theme::track (t));
         g.setFont (font (14.0f, true));
         g.drawText (kTrackIds[t], r.withTrimmedLeft (8), juce::Justification::centredLeft);
@@ -358,16 +365,36 @@ void SessionView::paint (juce::Graphics& g)
         g.fillRect (stop.withSizeKeepingCentre (9, 9));
     }
     g.setColour (theme::dim);
+    auto corner = juce::Rectangle<int> (getWidth() - sceneW, 0, sceneW, headH);
+    if (grid.shown() < kTracks)                          // the pages of tracks: < >
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            auto b = (i == 0 ? corner.withWidth (sceneW / 2) : corner.withTrimmedLeft (sceneW / 2)).reduced (2, 4).toFloat();
+            const bool can = i == 0 ? grid.first > 0 : grid.first + grid.shown() < kTracks;
+            g.setColour (theme::cellBeat.withAlpha (can ? 1.0f : 0.35f));
+            g.fillRoundedRectangle (b, theme::radius);
+            g.setColour (theme::fg.withAlpha (can ? 1.0f : 0.35f));
+            g.setFont (font (13.0f, true));
+            g.drawText (i == 0 ? "<" : ">", b, juce::Justification::centred);
+        }
+        return;
+    }
     g.setFont (font (11.0f));
-    g.drawText (juce::String::fromUTF8 ("Scènes"), juce::Rectangle<int> (getWidth() - sceneW, 0, sceneW, headH), juce::Justification::centred);
+    g.drawText (juce::String::fromUTF8 ("Scènes"), corner, juce::Justification::centred);
 }
 void SessionView::mouseUp (const juce::MouseEvent& e)
 {
     if (e.getPosition().y > headH || e.mouseWasDraggedSinceMouseDown()) return;
-    const int sceneW = getWidth() < 420 ? 44 : 58;
-    const int colW = (getWidth() - sceneW - kTracks * theme::gap) / kTracks;
-    const int t = e.getPosition().x / (colW + theme::gap);
-    if (t >= 0 && t < kTracks) { ctl.stopTrack (t); ctl.notify(); }
+    const int sceneW = grid.sceneW(), colW = grid.colW();
+    if (e.getPosition().x >= getWidth() - sceneW)
+    {
+        if (grid.shown() < kTracks) grid.page (e.getPosition().x < getWidth() - sceneW / 2 ? -1 : 1);
+        repaint();
+        return;
+    }
+    const int t = grid.first + e.getPosition().x / (colW + theme::gap);
+    if (t >= grid.first && t < grid.first + grid.shown() && t < kTracks) { ctl.stopTrack (t); ctl.notify(); }
 }
 
 // =================================================================== the step grid / piano roll

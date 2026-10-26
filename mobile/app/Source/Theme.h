@@ -11,8 +11,9 @@ inline const juce::Colour bg { 0xff151618 }, panel { 0xff1e1f22 }, cell { 0xff28
 inline juce::Colour track (int t)
 {
     static const juce::Colour c[] = { juce::Colour (0xffe38b5e), juce::Colour (0xff62b2c6), juce::Colour (0xffa093de),
-                                      juce::Colour (0xffbcc76d) };
-    return c[t & 3];
+                                      juce::Colour (0xffbcc76d), juce::Colour (0xffd98ab0), juce::Colour (0xff6fc4a2),
+                                      juce::Colour (0xffe0b85a), juce::Colour (0xff8aa0d8) };
+    return c[t & 7];
 }
 constexpr float radius = 4.0f;
 constexpr int gap = 2;

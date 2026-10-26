@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 /* SLOOP's tracks: 0..2 the synth parts, 3 the drum track */
-enum { SE_TRACKS = 4, SE_SYNTHS = 3, SE_DRUM = 3, SE_LANES = 16, SE_MAX_STEPS = 64, SE_MAX_LOCKS = 24 };
+enum { SE_TRACKS = 8, SE_SYNTHS = 7, SE_DRUM = 7, SE_LANES = 16, SE_MAX_STEPS = 64, SE_MAX_LOCKS = 24 };
 /* a drum hit's or a note's level, as the FM-1 stores it */
 enum { SE_LV_NORM = 0, SE_LV_GHOST = 1, SE_LV_SOFT = 2, SE_LV_HARD = 3 };
 /* a step's fill condition (the engine's own): always, only during a fill, never during one */

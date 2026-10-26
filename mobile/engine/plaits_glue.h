@@ -7,7 +7,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-enum { PLAITS_PARTS = 3, PLAITS_VOICES = 8 };
+enum { PLAITS_PARTS = 7, PLAITS_VOICES = 8 };
 typedef struct {
     float note;                                     /* MIDI note, with its fraction */
     float harmonics, timbre, morph;                 /* 0..1 */

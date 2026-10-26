@@ -42,11 +42,19 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 
     static constexpr int rowH = 58, addH = 44;
+    // the tracks in sight: all of them when they fit (a column 76 points or more), else a page of them
+    int sceneW() const { return getWidth() < 420 ? 44 : 58; }
+    int shown() const { return juce::jlimit (4, kTracks, (getWidth() - sceneW()) / 78); }
+    int colW() const { return (getWidth() - sceneW() - shown() * theme::gap) / shown(); }
+    int first = 0;                                   // the first track in sight
+    void page (int direction)
+    {
+        first = juce::jlimit (0, juce::jmax (0, kTracks - shown()), first + direction * shown());
+        repaint();
+    }
 
 private:
     void timerCallback() override;
-    int sceneW() const { return getWidth() < 420 ? 44 : 58; }
-    int colW() const { return (getWidth() - sceneW() - kTracks * theme::gap) / kTracks; }
     juce::Rectangle<int> cellRect (int t, int r) const;
     juce::Rectangle<int> sceneRect (int r) const;
     juce::Rectangle<int> addRect() const;
@@ -68,7 +76,14 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
-    void refresh() { grid.setSize (viewport.getMaximumVisibleWidth(), grid.wantedHeight()); grid.repaint(); repaint(); }
+    void refresh()
+    {
+        grid.setSize (viewport.getMaximumVisibleWidth(), grid.wantedHeight());
+        if (ctl.sel < grid.first || ctl.sel >= grid.first + grid.shown())   // (the selected track in sight)
+            grid.first = juce::jmin (kTracks - grid.shown(), ctl.sel / grid.shown() * grid.shown());
+        grid.repaint();
+        repaint();
+    }
 
 private:
     Controller& ctl;

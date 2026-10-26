@@ -2,6 +2,8 @@
 /* SLOOP's engine for the mobile app: firmware/host/preview.c (the firmware's DSP and clock, hardware replaced by
  * RAM) in one translation unit, and the calls of sloop_engine.h on top of it. The generated tables
  * (felucca_tables.h and the others) come from mobile/tools/gen_engine_tables.sh. */
+#define NPART 7                                 /* seven synth tracks and the drum track (the FM-1: three) */
+#define VOICE_BUDGET 32                         /* the voices sounding at once, all tracks together */
 #define FELUCCA_PLAITS 1                        /* the PLAITS engine (eng_plaits.c), the app's own */
 #define FELUCCA_OBXD 1                          /* the OBXD engine (eng_obxd.c), the app's own */
 #include "../../firmware/host/preview.c"

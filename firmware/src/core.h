@@ -8,9 +8,14 @@
 #include <stdint.h>
 #define NVOICE 8                 /* voices per part, and the budget shared by all parts */
 #define NPOLY 8
+#ifndef NPART                    /* (SLOOP Touch: the app sets its own count of synth parts) */
 #define NPART 3                  /* synth parts: tracks 1..3 */
-#define NTRK 4                   /* + the drum track */
-#define TRK_DRUM 3
+#endif
+#define NTRK (NPART + 1)         /* + the drum track */
+#define TRK_DRUM NPART
+#ifndef VOICE_BUDGET
+#define VOICE_BUDGET NVOICE      /* the voices sounding at once, all parts together (SLOOP Touch: more) */
+#endif
 enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #define NSTEP 64
 #define HALF_FRAMES 256          /* I2S half buffer: 5.8 ms at 44.1 kHz */

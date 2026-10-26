@@ -16,7 +16,7 @@ struct Project
     Session session;
     std::array<Sound, kTracks> sounds = kDefaultSounds;
     std::array<std::array<int, kParamSlots>, kTracks> params {};
-    bool hasParams = false;                      // (a new project: the sounds' own values)
+    std::array<bool, kTracks> hasParams {};      // a track's saved values (a new project, a track not saved: the sound's)
 
     juce::String toJson() const;
     static std::optional<Project> fromJson (const juce::String&);

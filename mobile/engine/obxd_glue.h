@@ -7,7 +7,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-enum { OBXD_PARTS = 3, OBXD_VOICES = 8 };
+enum { OBXD_PARTS = 7, OBXD_VOICES = 8 };
 typedef struct {
     float note;                                     /* MIDI note, with its fraction */
     int osc1, osc2;                                 /* 0 SAW 1 PULSE 2 both; osc 2: + 3 hard-synced to osc 1 */

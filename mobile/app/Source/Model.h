@@ -11,7 +11,7 @@
 namespace sloop
 {
 // The app's tracks: DR (SLOOP's drum track) then T1..T3 (its synth parts 0..2)
-constexpr int kTracks = 4;
+constexpr int kTracks = 8;          // DR, then T1..T7
 constexpr int kMaxSteps = 64;       // a clip's longest (SLOOP's NSTEP): 4 bars of 1/16
 constexpr int kBar = 16;            // a bar's steps: a new clip's length, and where launched clips start
 constexpr int kLanes = 16;
@@ -22,7 +22,17 @@ constexpr int kParamSlots = 96;     // room for every SLOOP track parameter (se_
 constexpr int kChainMax = 8;
 constexpr int16_t kNoLock = INT16_MIN;
 
-inline int engineTrack (int t) { return t == 0 ? 3 : t - 1; }
+inline int engineTrack (int t) { return t == 0 ? kTracks - 1 : t - 1; }   // (SLOOP's drum track is its last)
+inline const char* trackId (int t)
+{
+    static const char* ids[kTracks] = { "DR", "T1", "T2", "T3", "T4", "T5", "T6", "T7" };
+    return ids[(size_t) t % kTracks];
+}
+inline const char* trackName (int t)
+{
+    static const char* names[kTracks] = { "Drums", "Bass", "Keys", "Lead", "Pad", "Pluck", "Arp", "Texture" };
+    return names[(size_t) t % kTracks];
+}
 inline bool isDrum (int t) { return t == 0; }
 
 // A step's condition beyond its probability (Elektron / OP-Z style); the app resolves them
@@ -120,8 +130,9 @@ constexpr int kParamMute = 40;      // core.h P_MUTE
 // The sounds at start: a kit for DR, an engine and a preset for T1..T3 (sloop_engine.h se_*_name)
 struct Sound { int engine, preset; };
 constexpr int kDefaultKit = 15;                                         // HOUSE
-constexpr std::array<Sound, kTracks> kDefaultSounds {{ { -1, kDefaultKit }, { 0, 2 }, { 1, 0 }, { 6, 6 } }};
-                                                                        // -, ANALOG SUB BASS, DIGITAL RHODES, TRIO SYNC LEAD
+constexpr std::array<Sound, kTracks> kDefaultSounds {{ { -1, kDefaultKit }, { 0, 2 }, { 1, 0 }, { 6, 6 },
+                                                        { 13, 7 }, { 10, 9 }, { 3, 2 }, { 8, 0 } }};
+    // -, ANALOG SUB BASS, DIGITAL RHODES, TRIO SYNC LEAD, OBXD SOFT PAD, PHYS NYLON GTR, LOFI 8BIT ARP, GRAIN LOFI CLOUD
 
 // The key: a root and a scale. The piano roll and the keyboard only show its notes (row r = its r-th degree from
 // the root), so a melody stays in key, and changing the key moves every clip into the new one (a row keeps its
@@ -149,7 +160,7 @@ struct Key
 };
 inline int rowNote (int track, int row, const Key& key)
 {
-    static const int base[] = { 0, 36, 60, 72 };
+    static const int base[kTracks] = { 0, 36, 60, 72, 60, 48, 72, 60 };
     const auto& d = key.def();
     return juce::jlimit (0, 127, base[track] + key.root + 12 * (row / d.size) + d.steps[(size_t) (row % d.size)]);
 }

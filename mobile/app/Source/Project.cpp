@@ -115,7 +115,7 @@ juce::String Project::toJson() const
         auto* tr = new juce::DynamicObject();
         tr->setProperty ("engine", sounds[(size_t) t].engine);
         tr->setProperty ("preset", sounds[(size_t) t].preset);
-        if (hasParams)
+        if (hasParams[(size_t) t])
         {
             juce::Array<juce::var> p;
             for (int v : params[(size_t) t]) p.add (v);
@@ -134,7 +134,7 @@ std::optional<Project> Project::fromJson (const juce::String& text)
 {
     const auto root = juce::JSON::parse (text);
     auto* tracks = root["tracks"].getArray();
-    if (! root.isObject() || tracks == nullptr || tracks->size() != kTracks || (int) root["format"] > kFormat)
+    if (! root.isObject() || tracks == nullptr || tracks->isEmpty() || tracks->size() > kTracks || (int) root["format"] > kFormat)
         return std::nullopt;
     Project p;
     const int format = (int) root["format"];
@@ -147,8 +147,7 @@ std::optional<Project> Project::fromJson (const juce::String& text)
     for (auto& tr : *tracks)
         if (auto* clips = tr["clips"].getArray()) scenes = juce::jmax (scenes, clips->size());
     for (int i = 0; i < scenes; ++i) p.session.addScene();
-    p.hasParams = true;
-    for (int t = 0; t < kTracks; ++t)
+    for (int t = 0; t < tracks->size(); ++t)            // (an older project: four tracks, the others as new)
     {
         const auto& tr = (*tracks)[t];
         p.sounds[(size_t) t] = { (int) tr.getProperty ("engine", kDefaultSounds[(size_t) t].engine),
@@ -157,9 +156,8 @@ std::optional<Project> Project::fromJson (const juce::String& text)
         {
             for (int i = 0; i < params->size(); ++i)
                 if (const int id = paramId (i, format); id < kParamSlots) p.params[(size_t) t][(size_t) id] = (*params)[i];
+            p.hasParams[(size_t) t] = true;
         }
-        else
-            p.hasParams = false;
         if (auto* clips = tr["clips"].getArray())
             for (int s = 0; s < clips->size(); ++s) p.session.at (t, s) = readClip ((*clips)[s], t, format);
     }

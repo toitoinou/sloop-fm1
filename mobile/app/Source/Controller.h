@@ -11,6 +11,9 @@ namespace sloop
 {
 class Controller
 {
+    static std::array<int, kTracks> filled (int v) { std::array<int, kTracks> a; a.fill (v); return a; }
+    static std::array<Page, kTracks> firstPages() { std::array<Page, kTracks> a; a.fill (Page::macro); a[0] = Page::mix; return a; }
+
 public:
     // restore: reopen the autosave of the last time (else the demo); the self-test starts from the demo
     explicit Controller (AudioEngine& a, bool restore = true) : audio (a)
@@ -34,11 +37,11 @@ public:
     int sel = 0;                                         // the selected track
     std::array<int, kTracks> editSlot {};                // the clip each track edits
     int lane = 0;                                        // the drum sound the knobs and pads point at
-    std::array<int, kTracks> queued { { kNone, kNone, kNone, kNone } };   // a row waiting for the bar, kStop, kNone
+    std::array<int, kTracks> queued = filled (kNone);    // a row waiting for the bar, kStop, kNone
     std::array<std::vector<int>, kTracks> playlist;      // the rows each track plays in turn (a chain)
     std::array<bool, kTracks> muted {};
     std::array<std::array<int, kParamSlots>, kTracks> params {};   // the tracks' SLOOP parameters (the knobs' values)
-    std::array<Page, kTracks> page { { Page::mix, Page::macro, Page::macro, Page::macro } };
+    std::array<Page, kTracks> page = firstPages();
     std::vector<std::pair<int, int>> held;               // the steps held (row, step): knobs lock them
     std::array<Sound, kTracks> sounds = kDefaultSounds;   // DR: { -, kit }
     int seenParamSerial = -1;
@@ -117,7 +120,7 @@ public:
         p.session = session;
         p.sounds = sounds;
         p.params = params;
-        p.hasParams = true;
+        p.hasParams.fill (true);
         return p;
     }
     void load (const Project& p)
@@ -134,7 +137,7 @@ public:
         recording = false;
         editSlot.fill (0);
         queued.fill (kNone);
-        page = { { Page::mix, Page::macro, Page::macro, Page::macro } };
+        page = firstPages();
         undoStack.clear();
         redoStack.clear();
         setBpm (p.bpm);
@@ -146,12 +149,12 @@ public:
             sounds[(size_t) t] = snd;
             if (isDrum (t)) audio.setKit (snd.preset);
             else audio.setSound (t, snd.engine, snd.preset);
-            if (p.hasParams)                             // (after the sound: the saved values over the preset's)
+            if (p.hasParams[(size_t) t])                 // (after the sound: the saved values over the preset's)
             {
                 params[(size_t) t] = p.params[(size_t) t];
                 audio.setParams (t, p.params[(size_t) t]);
             }
-            muted[(size_t) t] = p.hasParams && p.params[(size_t) t][kParamMute] != 0;
+            muted[(size_t) t] = p.hasParams[(size_t) t] && p.params[(size_t) t][kParamMute] != 0;
             playlist[(size_t) t].clear();
             if (session.at (t, 0)) playlist[(size_t) t] = { 0 };
             sendPlaylist (t, AudioEngine::When::now);

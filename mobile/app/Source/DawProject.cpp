@@ -9,7 +9,6 @@ namespace
 {
 constexpr double kStepBeats = 0.25;              // a 1/16 step
 
-const char* kTrackNames[kTracks] = { "Drums", "Bass", "Keys", "Lead" };
 
 struct Ids
 {
@@ -93,7 +92,7 @@ juce::String projectXml (const Project& p)
         auto* tr = add (*structure, "Track", &ids);
         trackIds[(size_t) t] = tr->getStringAttribute ("id");
         const auto& snd = p.sounds[(size_t) t];
-        tr->setAttribute ("name", juce::String (kTrackNames[t]) + " (" + (isDrum (t) ? se_kit_name (snd.preset)
+        tr->setAttribute ("name", juce::String (trackName (t)) + " (" + (isDrum (t) ? se_kit_name (snd.preset)
                                                                                : se_preset_name (snd.engine, snd.preset)) + ")");
         tr->setAttribute ("color", colourOf (t));
         tr->setAttribute ("contentType", "notes");
@@ -129,9 +128,9 @@ juce::String projectXml (const Project& p)
     };
     for (int t = 0; t < kTracks; ++t)
     {
-        const int pan = p.hasParams ? p.params[(size_t) t][(size_t) SE_P_PAN] : 0;      // SLOOP's PAN: -64..63
+        const int pan = p.hasParams[(size_t) t] ? p.params[(size_t) t][(size_t) SE_P_PAN] : 0;      // SLOOP's PAN: -64..63
         channels[(size_t) t]->setAttribute ("destination", masterId);
-        mixer (*channels[(size_t) t], "regular", p.hasParams && p.params[(size_t) t][(size_t) SE_P_MUTE] != 0,
+        mixer (*channels[(size_t) t], "regular", p.hasParams[(size_t) t] && p.params[(size_t) t][(size_t) SE_P_MUTE] != 0,
                juce::jlimit (0.0, 1.0, 0.5 + pan / 128.0));
     }
     mixer (*master, "master", false, 0.5);
