@@ -154,7 +154,7 @@ int32_t preview_position(uint32_t k)
 void preview_panic(void)
 {
     transport_req = 2;
-    panic_req = 15;
+    panic_req = (1u << NTRK) - 1u;                 /* (every track: 4 on the FM-1, more in the app) */
     /* ARP HOLD must also release when the browser loses focus. */
     for (uint32_t k = 0; k < NPART; k++) {
         trk[k].nheld = trk[k].arp_phys = trk[k].latched = 0;
