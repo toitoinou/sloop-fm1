@@ -20,6 +20,7 @@ MainComponent::MainComponent()
     undoButton.onClick = [this] { ctl.undo(); };
     redoButton.onClick = [this] { ctl.redo(); };
     pads.onKey = [this] { openSettings(); };
+    mixer.onRecorded = [this] (const juce::File& f) { shareRecording (f); };
     stopClips.onClick = [this] { ctl.stopAll(); };
     fillButton.onHold = [this] (bool on) { audio.setFill (on); };
     tabSession.onClick = [this] { showTab (Tab::session); };
@@ -257,6 +258,25 @@ juce::String MainComponent::audioText()
     const double ms = rate > 0 ? (buffer + extra) * 1000.0 / rate : 0.0;
     return devices.getCurrentAudioDeviceType() + juce::String::fromUTF8 (" · buffer ") + juce::String (buffer)
            + juce::String::fromUTF8 (" · ≈ ") + juce::String (ms, 1) + " ms";
+}
+
+// a recording just made: the phone's share sheet (Drive, a message, Files...); a computer: where to save a copy
+void MainComponent::shareRecording (const juce::File& file)
+{
+    if (! file.existsAsFile()) return;
+   #if JUCE_ANDROID || JUCE_IOS
+    sharing = juce::ContentSharer::shareFilesScoped ({ juce::URL (file) }, [] (bool, const juce::String&) {}, this);
+   #else
+    saving = std::make_unique<juce::FileChooser> (juce::String::fromUTF8 ("Enregistrer l'audio"),
+                                                  juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile (file.getFileName()),
+                                                  "*.wav");
+    saving->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                             | juce::FileBrowserComponent::warnAboutOverwriting,
+                         [file] (const juce::FileChooser& fc)
+                         {
+                             if (auto out = fc.getResult(); out != juce::File()) file.copyFileTo (out);
+                         });
+   #endif
 }
 
 void MainComponent::tap()

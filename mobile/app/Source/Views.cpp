@@ -856,6 +856,7 @@ juce::Rectangle<int> MixerView::partRect (int strip, Part part) const
     }
     r.removeFromTop (4);
     auto ms = r.removeFromTop (28);
+    if (master) return part == record ? ms : juce::Rectangle<int>();   // (the master: the output's recording there)
     if (part == mute) return ms.removeFromLeft (ms.getWidth() / 2 - 2);
     if (part == solo) return ms.withTrimmedLeft (ms.getWidth() / 2 + 2);
     r.removeFromTop (6);
@@ -913,7 +914,7 @@ MixerView::Control MixerView::control (int strip, Part part) const
 MixerView::Hit MixerView::hitAt (juce::Point<int> p) const
 {
     for (int strip = 0; strip <= kTracks; ++strip)
-        for (auto part : { name, mute, solo, pan, rev, dly, fader, pagePrev, pageNext })
+        for (auto part : { name, mute, solo, pan, rev, dly, fader, pagePrev, pageNext, record })
             if (partRect (strip, part).contains (p)) return { strip, part };
     return {};
 }
@@ -952,6 +953,18 @@ void MixerView::paint (juce::Graphics& g)
                 g.setColour (theme::fg.withAlpha (can ? 1.0f : 0.35f));
                 g.drawText (p == pagePrev ? "<" : ">", r, juce::Justification::centred);
             }
+        if (master)                                      // REC: the output into a WAV (its time while it runs)
+        {
+            auto r = partRect (strip, record).toFloat();
+            const bool on = ctl.audio.isRecording();
+            g.setColour (on ? theme::rec : theme::cell);
+            g.fillRoundedRectangle (r, theme::radius);
+            g.setColour (on ? theme::ink : theme::rec);
+            g.setFont (font (12.0f, true));
+            const int sec = (int) ((double) ctl.audio.recordedFrames.load() / juce::jmax (1.0, ctl.audio.outputRate()));
+            g.drawText (on ? juce::String::formatted ("%d:%02d", sec / 60, sec % 60) : juce::String::fromUTF8 ("● REC"), r,
+                        juce::Justification::centred);
+        }
         if (! master)
             for (auto p : { mute, solo })
             {
@@ -1017,6 +1030,22 @@ void MixerView::mouseDown (const juce::MouseEvent& e)
     if (h.part == pagePrev || h.part == pageNext)
     {
         first = juce::jlimit (0, kTracks - shown(), first + (h.part == pagePrev ? -1 : 1) * shown());
+        repaint();
+        return;
+    }
+    if (h.part == record)
+    {
+        if (ctl.audio.isRecording())
+        {
+            ctl.audio.stopRecording();
+            if (onRecorded) onRecorded (recording);
+        }
+        else
+        {
+            recording = store::folder().getChildFile ("recordings")
+                            .getChildFile ("SLOOP " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S") + ".wav");
+            ctl.audio.startRecording (recording);
+        }
         repaint();
         return;
     }

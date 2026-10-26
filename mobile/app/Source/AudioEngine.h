@@ -42,6 +42,13 @@ public:
     void setSolo (unsigned mask);                       // bit t: track t soloed (0: none)
     void setGlobal (int id, int value);                 // a global setting (sloop_engine.h SE_G_*)
     std::atomic<float> masterGain { 1.0f };             // the master volume, at the output
+    // recording the output (what is heard: the song, the pads, the mix moves) into a WAV, 24-bit stereo, written on
+    // a thread of its own; stop: the file is complete
+    bool startRecording (const juce::File&);
+    void stopRecording();
+    bool isRecording() const { return activeWriter.load() != nullptr; }
+    std::atomic<int64_t> recordedFrames { 0 };
+    double outputRate() const { return deviceRate; }
 
     // ---- read by the UI
     std::atomic<int> playingSlot[kTracks];   // the session row each track plays, -1 none
@@ -119,6 +126,11 @@ private:
     double countFrames = 0;
     std::array<int, kTracks> framesInStep {};
     uint32_t rng = 0x12345678u;
+
+    juce::TimeSliceThread writerThread { "SLOOP Touch recorder" };
+    std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> threaded;
+    juce::CriticalSection writerLock;
+    std::atomic<juce::AudioFormatWriter::ThreadedWriter*> activeWriter { nullptr };
 
     // engine (44.1 kHz) -> device rate
     double deviceRate = 44100.0;

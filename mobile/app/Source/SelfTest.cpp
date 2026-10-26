@@ -362,6 +362,24 @@ int runSelfTest()
         run (0.5);
     }
 
+    // recording the output: a WAV as long as the time recorded
+    {
+        const auto file = juce::File::createTempFile (".wav");
+        const bool started = audio.startRecording (file);
+        ctl.audio.note (2, 60, true);
+        run (1.0);
+        ctl.audio.note (2, 60, false);
+        audio.stopRecording();
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        const double seconds = reader != nullptr ? (double) reader->lengthInSamples / reader->sampleRate : 0.0;
+        check (started && reader != nullptr && reader->numChannels == 2 && seconds > 0.9 && seconds < 1.1,
+               "recording the output: a WAV as long as the time recorded");
+        reader.reset();
+        file.deleteFile();
+    }
+
     // OBXD: every preset sounds
     {
         const int obxd = se_engine_count() - 1;

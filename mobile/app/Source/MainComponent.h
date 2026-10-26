@@ -62,5 +62,8 @@ private:
     std::vector<double> taps;
     int ticks = 0;
     juce::String lastAutosave;
+    void shareRecording (const juce::File&);
+    juce::ScopedMessageBox sharing;
+    std::unique_ptr<juce::FileChooser> saving;
 };
 } // namespace sloop

@@ -172,13 +172,14 @@ class MixerView : public juce::Component, private juce::Timer
 {
 public:
     explicit MixerView (Controller& c) : ctl (c) { startTimerHz (30); }
+    std::function<void (const juce::File&)> onRecorded;   // a recording of the output, just finished
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
 private:
-    enum Part { name, mute, solo, pan, rev, dly, fader, pagePrev, pageNext, none };
+    enum Part { name, mute, solo, pan, rev, dly, fader, pagePrev, pageNext, record, none };
     struct Hit { int strip = -1; Part part = none; };   // strip kTracks: the master
     void timerCallback() override;
     int masterW() const { return juce::jmin (130, getWidth() / 4); }
@@ -191,6 +192,7 @@ private:
     Control control (int strip, Part) const;
     Controller& ctl;
     int first = 0;
+    juce::File recording;
     std::array<float, kTracks + 1> meter {};
     struct Drag { Hit hit; float start = 0; int value0 = 0; };
     std::map<int, Drag> drags;

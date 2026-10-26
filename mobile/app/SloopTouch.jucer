@@ -95,6 +95,7 @@
   <JUCEOPTIONS JUCE_USE_ANDROID_OBOE="1"/>
   <EXPORTFORMATS>
     <ANDROIDSTUDIO targetFolder="Builds/Android" androidMinimumSDK="26" androidTargetSDK="34"
+                   androidEnableContentSharing="1"
                    androidScreenOrientation="unspecified"
                    extraCompilerFlags="-fwrapv -fno-strict-aliasing">
       <CONFIGURATIONS>

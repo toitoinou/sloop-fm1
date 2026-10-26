@@ -69,6 +69,33 @@ void AudioEngine::note (int track, int midi, bool on)
 {
     Command c; c.type = Type::note; c.a = track; c.b = midi; c.c = on; post (std::move (c));
 }
+bool AudioEngine::startRecording (const juce::File& file)
+{
+    stopRecording();
+    file.deleteFile();
+    file.getParentDirectory().createDirectory();
+    auto stream = file.createOutputStream();
+    if (stream == nullptr) return false;
+    juce::WavAudioFormat wav;
+    auto* writer = wav.createWriterFor (stream.get(), deviceRate, 2, 24, {}, 0);
+    if (writer == nullptr) return false;
+    stream.release();                                    // (the writer owns it now)
+    writerThread.startThread();
+    threaded = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (writer, writerThread, 32768);
+    recordedFrames = 0;
+    const juce::ScopedLock sl (writerLock);
+    activeWriter = threaded.get();
+    return true;
+}
+void AudioEngine::stopRecording()
+{
+    {
+        const juce::ScopedLock sl (writerLock);
+        activeWriter = nullptr;
+    }
+    threaded.reset();                                    // (the rest written, the file closed)
+}
+
 void AudioEngine::setSolo (unsigned mask) { Command c; c.type = Type::solo; c.a = (int) mask; post (std::move (c)); }
 void AudioEngine::setGlobal (int id, int value) { Command c; c.type = Type::global; c.a = id; c.b = value; post (std::move (c)); }
 void AudioEngine::repeat (int track, int id, int velocity, int rate, bool on)
@@ -130,6 +157,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
                              -juce::FloatVectorOperations::findMinimum (out[ch], numSamples));
         }
     masterPeak.store (pk, std::memory_order_relaxed);
+    if (numOut >= 2 && out[0] != nullptr && out[1] != nullptr)
+    {
+        const juce::ScopedLock sl (writerLock);         // (taken only while starting or stopping)
+        if (auto* w = activeWriter.load())
+            if (w->write (out, numSamples)) recordedFrames += numSamples;
+    }
     if (numOut == 1 && out[0] != nullptr)            // a mono device: the left channel only, kept simple
         for (int i = 0; i < numSamples; ++i) out[0][i] *= 0.7f;
     for (int ch = 2; ch < numOut; ++ch)
