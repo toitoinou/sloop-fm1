@@ -99,6 +99,12 @@ void AudioEngine::stopRecording()
     threaded.reset();                                    // (the rest written, the file closed)
 }
 
+void AudioEngine::setLink (bool on)
+{
+    if (on && ! link.isEnabled()) link.enable (true);    // (Link adopts the session's tempo if there is one)
+    if (! on) link.enable (false);
+    Command c; c.type = Type::link; c.a = on; post (std::move (c));
+}
 void AudioEngine::setSolo (unsigned mask) { Command c; c.type = Type::solo; c.a = (int) mask; post (std::move (c)); }
 void AudioEngine::setGlobal (int id, int value) { Command c; c.type = Type::global; c.a = id; c.b = value; post (std::move (c)); }
 void AudioEngine::repeat (int track, int id, int velocity, int rate, bool on)
@@ -125,6 +131,7 @@ void AudioEngine::setPlaylist (int track, When when, const std::vector<std::pair
 void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
     prepare (device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
+    outputLatency = (int64_t) (device->getOutputLatencyInSamples() * 1.0e6 / juce::jmax (1.0, deviceRate));
 }
 void AudioEngine::prepare (double sampleRate, int blockSize)
 {
@@ -133,6 +140,8 @@ void AudioEngine::prepare (double sampleRate, int blockSize)
     staging.setSize (2, juce::jmax (16384, blockSize * 4));
     staged = 0;
     for (auto& i : interp) i.reset();
+    deviceFrames = 0;
+    link.resetFilter();
 }
 
 void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* out, int numOut,
@@ -171,6 +180,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
             }
         }
     }
+    if (linkOn) callbackTime = link.frameTime (deviceFrames) + outputLatency;
+    deviceFrames += numSamples;
     const double ratio = (double) se_sample_rate() / deviceRate;
     const int needed = (int) std::ceil (numSamples * ratio) + 4;
     while (staged < needed && staged + (int) se_block_frames() <= staging.getNumSamples())
@@ -211,8 +222,13 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
 
 void AudioEngine::renderEngineBlock()
 {
-    const float* o = se_render();
     const int frames = (int) se_block_frames();
+    if (linkOn)                                          // (the block is heard after what is staged already)
+    {
+        const double us = 1.0e6 / se_sample_rate();
+        followLink (callbackTime + (int64_t) (staged * us), callbackTime + (int64_t) ((staged + frames) * us), frames);
+    }
+    const float* o = se_render();
     auto* l = staging.getWritePointer (0, staged);
     auto* r = staging.getWritePointer (1, staged);
     for (int i = 0; i < frames; ++i) { l[i] = o[2 * i]; r[i] = o[2 * i + 1]; }
@@ -323,6 +339,7 @@ void AudioEngine::apply (Command& c)
     switch (c.type)
     {
         case Type::play:
+            if (linkOn) { linkPlayReq = c.a ? 1 : -1; break; }   // (the session starts and stops it: followLink)
             if (c.a && ! running && ! countingIn)
             {
                 if (c.b) { countingIn = true; countFrames = 0; countIn = 4; se_click (1); }
@@ -330,7 +347,23 @@ void AudioEngine::apply (Command& c)
             }
             else if (! c.a && (running || countingIn)) stopTransport();
             break;
-        case Type::bpm: tempo = c.a; se_set_bpm (c.a); break;
+        case Type::bpm:
+            tempo = c.a;
+            se_set_bpm (c.a);
+            if (linkOn) linkTempoReq = c.a;
+            break;
+        case Type::link:
+            linkOn = c.a != 0;
+            if (linkOn)
+            {
+                seenTempo = 0;                           // (the session's state published at the next block)
+                linkTempoReq = link.peers() == 0 ? tempo : 0;   // alone: ours; else the session's (no hijack)
+                if (running) { linkPlayReq = 1; linkOrigin = 0; linkBeat = 0; }
+                link.resetFilter();
+                deviceFrames = 0;
+            }
+            else se_set_advance (-1);
+            break;
         case Type::swing: se_set_swing (c.a); break;
         case Type::metronome: se_set_metronome (c.a); break;
         case Type::key:
@@ -426,6 +459,50 @@ void AudioEngine::apply (Command& c)
             break;
         }
     }
+}
+
+// Link, before each engine block: what this app asked first (a tempo, PLAY / STOP), then the session's tempo and
+// transport, then how far the song moves in the block: to the session's beat at its end (a bar of the session is a
+// bar here), at no more than twice the tempo when behind (no burst), not at all when ahead
+void AudioEngine::followLink (int64_t start, int64_t end, int frames)
+{
+    if (linkTempoReq > 0) { link.setTempo (linkTempoReq, start); linkTempoReq = 0; }
+    if (linkPlayReq != 0) { link.setPlaying (linkPlayReq > 0, start); linkPlayReq = 0; }
+    const auto st = link.capture (start, end);
+    if (std::abs (st.tempo - seenTempo) > 1.0e-3 || st.playing != seenPlaying)
+    {
+        seenTempo = st.tempo;
+        seenPlaying = st.playing;
+        if (const int bpm = juce::jlimit (kMinBpm, kMaxBpm, juce::roundToInt (st.tempo)); bpm != tempo)
+        {
+            tempo = bpm;                                 // (the delays, the arps, the note repeat)
+            se_set_bpm (bpm);
+        }
+        linkTempo = st.tempo;
+        linkPlaying = st.playing;
+        linkSerial.fetch_add (1);
+    }
+    if (st.playing && ! running.load (std::memory_order_relaxed))
+    {
+        const double bar = std::ceil (st.beatStart / LinkSync::kQuantum - 1.0e-9) * LinkSync::kQuantum;
+        if (bar >= st.beatEnd) return;                   // the session's next bar not yet
+        countingIn = false;
+        countIn = 0;
+        startTransport();
+        linkOrigin = bar;
+        linkBeat = 0;
+    }
+    else if (! st.playing && running.load (std::memory_order_relaxed))
+    {
+        stopTransport();
+    }
+    if (! running.load (std::memory_order_relaxed)) return;
+    constexpr double beatUnits = 44100.0 * 60.0;        // (the engine's clock: a sample at 1 BPM, firmware core.h)
+    const double nominal = frames / (double) se_sample_rate() * st.tempo / 60.0;
+    const double ahead = juce::jlimit (0.0, 2.0 * nominal, st.beatEnd - linkOrigin - linkBeat);
+    const double moved = std::round (ahead * beatUnits) / beatUnits;
+    se_set_advance (moved);
+    linkBeat += moved;
 }
 
 void AudioEngine::runRepeats (int frames)

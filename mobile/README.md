@@ -143,7 +143,10 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [x] Enregistrer la sortie en WAV (REC du master dans le mixeur), puis la partager.
 - [x] MIDI : les entrées (USB, Bluetooth après appairage) jouent la piste choisie et s'enregistrent, CC 21-24 /
   70-73 sur les boutons, START / STOP ; l'horloge MIDI en sortie (Réglages).
-- [ ] Ableton Link, l'export audio piste par piste.
+- [x] Ableton Link (Réglages) : le tempo, la mesure et Play / Stop partagés avec les apps du même Wi-Fi (Live, Bitwig,
+  Koala, G-Stomper…) ; Play attend la mesure suivante de la session. `mobile/tools/get_link.sh` récupère Link (GPL-2.0+)
+  dans `mobile/third_party/link`.
+- [ ] L'export audio piste par piste.
 - [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
 - [ ] Une piste guitare (NAM / TONE3000).
 

@@ -7,6 +7,7 @@
 // steps), from whatever clip is due there. So a clip can have any length (1..64), a chain can mix lengths, a clip
 // launched while playing starts on the next bar, and an edit is heard at once.
 #pragma once
+#include "LinkSync.h"
 #include "Model.h"
 #include <atomic>
 
@@ -54,6 +55,13 @@ public:
     bool isRecording() const { return activeWriter.load() != nullptr; }
     std::atomic<int64_t> recordedFrames { 0 };
     double outputRate() const { return deviceRate; }
+    // Ableton Link: on, the song follows the session's tempo, bar and PLAY / STOP (a count-in is not played: PLAY
+    // waits for the session's next bar, or starts at once alone). What the session changes shows in linkSerial
+    LinkSync link { 118.0 };
+    void setLink (bool on);
+    std::atomic<int> linkSerial { 0 };                  // counts up when the session's tempo or PLAY changes
+    std::atomic<bool> linkPlaying { false };
+    std::atomic<double> linkTempo { 0.0 };
 
     // ---- read by the UI
     std::atomic<int> playingSlot[kTracks];   // the session row each track plays, -1 none
@@ -77,7 +85,7 @@ public:
     void audioDeviceStopped() override {}
 
 private:
-    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber, repeat, solo, global };
+    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber, repeat, solo, global, link };
     struct Command
     {
         Type type;
@@ -127,6 +135,15 @@ private:
     std::array<Repeat, 8> repeats {};
     double clock = 0;                                    // frames rendered (the repeats' time)
     void runRepeats (int frames);
+    // Link: the device's frames so far (its clock), the moment this callback's first frame is heard
+    bool linkOn = false;
+    double deviceFrames = 0;
+    int64_t callbackTime = 0, outputLatency = 0;      // (µs)
+    int linkPlayReq = 0;                               // 1 PLAY, -1 STOP asked here, for the session
+    double linkTempoReq = 0;
+    double linkBeat = 0, linkOrigin = 0, seenTempo = 0;   // the beats the song has moved since PLAY; where it began
+    bool seenPlaying = false;
+    void followLink (int64_t start, int64_t end, int frames);
     bool countingIn = false;
     double countFrames = 0;
     std::array<int, kTracks> framesInStep {};

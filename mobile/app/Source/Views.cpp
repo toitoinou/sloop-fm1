@@ -1638,7 +1638,8 @@ SettingsSheet::SettingsSheet (Controller& c, std::function<void()> close, std::f
     addAndMakeVisible (ok);
     ok.onClick = [this] { onClose(); };
     ok.setToggleState (true, juce::dontSendNotification);
-    for (auto* text : { "Tonalité", "Gamme", "Swing", "Jeu", "Audio", "MIDI (notes sur la piste choisie, CC 21-24 / 70-73 : les boutons)" })
+    for (auto* text : { "Tonalité", "Gamme", "Swing", "Jeu", "Audio", "MIDI (notes sur la piste choisie, CC 21-24 / 70-73 : les boutons)",
+                        "Ableton Link (le tempo, la mesure, Play / Stop avec les apps du même Wi-Fi)" })
     {
         auto* l = labels.add (new Label());
         l->text = juce::String::fromUTF8 (text);
@@ -1674,6 +1675,9 @@ SettingsSheet::SettingsSheet (Controller& c, std::function<void()> close, std::f
    #if ! (JUCE_ANDROID || JUCE_IOS)
     bluetooth.setVisible (false);
    #endif
+    link.onClick = [this] { auto p = ctl.prefs; p.link = ! p.link; ctl.setPrefs (p); sync(); };
+    content.addAndMakeVisible (link);
+    startTimerHz (2);
     sync();
 }
 void SettingsSheet::Label::paint (juce::Graphics& g)
@@ -1693,6 +1697,11 @@ void SettingsSheet::sync()
     buffer.setButtonText (audioInfo ? audioInfo() : juce::String());
     midiInputs.setButtonText (midiInfo ? midiInfo() : juce::String());
     clockOut.setToggleState (ctl.prefs.midiClockOut, juce::dontSendNotification);
+    link.setToggleState (ctl.prefs.link, juce::dontSendNotification);
+    const int peers = ctl.prefs.link ? ctl.audio.link.peers() : 0;
+    link.setButtonText (! ctl.prefs.link ? juce::String ("Link : non")
+                        : peers == 0 ? juce::String::fromUTF8 ("Link : oui (aucune autre app)")
+                        : "Link : oui (" + juce::String (peers) + (peers == 1 ? " app)" : " apps)"));
     repaint();
 }
 juce::Rectangle<int> SettingsSheet::panel() const
@@ -1732,6 +1741,7 @@ void SettingsSheet::resized()
     juce::Array<juce::Component*> midiRow { &midiInputs, &clockOut };
     if (bluetooth.isVisible()) midiRow.add (&bluetooth);
     flow (midiRow, 180);
+    label (6); flow ({ &link }, 200);
     content.setSize (w, y);
 }
 void SettingsSheet::paint (juce::Graphics& g)
@@ -1759,6 +1769,7 @@ void BpmBox::paint (juce::Graphics& g)
     g.drawText (juce::String (ctl.bpm), r.withTrimmedBottom (r.getHeight() * 0.3f), juce::Justification::centredBottom);
     g.setColour (theme::dim);
     g.setFont (font (9.5f));
-    g.drawText ("BPM", r.withTrimmedTop (r.getHeight() * 0.68f), juce::Justification::centredTop);
+    g.drawText (ctl.linkPeers < 0 ? juce::String ("BPM") : "LINK " + juce::String (ctl.linkPeers),   // (Link: the apps with it)
+                r.withTrimmedTop (r.getHeight() * 0.68f), juce::Justification::centredTop);
 }
 } // namespace sloop

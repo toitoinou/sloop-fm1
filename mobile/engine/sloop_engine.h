@@ -37,6 +37,9 @@ void se_set_swing(int amount);                /* 0 (straight) .. 100 (the most: 
 void se_set_metronome(int on);                /* a click on every beat while playing, louder on the bar's first */
 void se_click(int accent);                    /* one click now (the app's count-in) */
 void se_panic(void);
+/* an outside clock (Ableton Link): how far the transport moves in the next se_render(), in beats (it has its own
+ * tempo again: < 0). The tempo (se_set_bpm) still sets the delays' and the arps' times */
+void se_set_advance(double beats);
 
 /* sounds. The names and counts read constant tables only: they may be called from any thread */
 int se_engine_count(void);

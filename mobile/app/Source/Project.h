@@ -33,6 +33,7 @@ struct Prefs
     bool countIn = true;                         // REC from stopped: a bar of clicks first
     bool quantizeRec = true;                     // a hit recorded on the nearest step (else between steps)
     bool midiClockOut = false;                   // the MIDI clock and START / STOP out
+    bool link = false;                           // Ableton Link: the tempo, the bar and PLAY shared on the network
 };
 
 // the projects kept in the app (userApplicationDataDirectory/SLOOP Touch/projects/*.sloop)

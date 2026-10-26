@@ -454,6 +454,47 @@ int runSelfTest()
         run (0.5);
         check (juno > dry * 10.0 + 1e-3 && vib > 1.0, "MOD: the Juno chorus is stereo, the vibrato sounds");
     }
+    // Ableton Link, alone on the network (in real time: Link's clock is the system's): PLAY starts at once, the song
+    // follows the session's tempo (another app's) and is on its beat; the session's STOP stops it
+    {
+        auto runRT = [&] (double seconds)
+        {
+            const double t0 = juce::Time::getMillisecondCounterHiRes();
+            for (int i = 0; i < (int) (seconds * rate / block); ++i)
+            {
+                run (block / rate);
+                const double due = t0 + (i + 1) * block / rate * 1000.0;
+                while (juce::Time::getMillisecondCounterHiRes() < due) juce::Thread::sleep (1);
+            }
+        };
+        if (ctl.playing) ctl.togglePlay();
+        ctl.prefs.link = true;                           // (not setPrefs: no prefs file written)
+        audio.setLink (true);
+        runRT (0.2);
+        ctl.setBpm (100);
+        ctl.togglePlay();
+        runRT (0.3);
+        ctl.poll();
+        const bool started = audio.running.load() && ctl.playing && std::abs (audio.linkTempo.load() - 100.0) < 0.01;
+        audio.link.setTempo (140.0, audio.link.now());   // (as another app would: the test runs the audio thread)
+        runRT (1.5);
+        ctl.poll();
+        const int followed = ctl.bpm;
+        const auto st = audio.link.capture (audio.link.now(), audio.link.now());
+        const double expected = std::fmod (st.beatStart, 4.0) * 4.0, stepAt = audio.barStep[0].load();
+        const double off = std::abs (std::remainder (stepAt - expected, 16.0));
+        std::printf ("      Link: started %d, %d BPM, step %.0f, the session's %.2f\n", (int) started, followed, stepAt, expected);
+        audio.link.setPlaying (false, audio.link.now());
+        runRT (0.2);
+        ctl.poll();
+        const bool stopped = ! audio.running.load() && ! ctl.playing;
+        ctl.prefs.link = false;
+        audio.setLink (false);
+        ctl.setBpm (118);
+        run (0.1);
+        check (started && followed == 140 && off <= 1.5 && stopped,
+               "Link: PLAY, the session's tempo and beat, the session's STOP");
+    }
     std::printf ("%s\n", failures == 0 ? "self-test passed" : "self-test FAILED");
     return failures == 0 ? 0 : 1;
 }

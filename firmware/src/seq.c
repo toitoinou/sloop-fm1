@@ -72,6 +72,9 @@ static void step_in_push(uint32_t ev)
 static volatile uint8_t transport_req;   /* 1 start, 2 stop (from the UI); 3 start from a MIDI START */
 static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
 static volatile uint8_t arp_keep_req;    /* (2.7) bit per track: a sound loaded under its running arp: the arp's notes stay */
+/* (the mobile app) an outside clock, Ableton Link: the units the clock moves on in the next block, set before it
+ * (-1: none, the tempo or the MIDI clock as ever) */
+static int32_t ext_adv = -1;
 
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 
@@ -3025,7 +3028,8 @@ static void events_block(uint32_t n)
     }
     if (rec_wait && song.playing)
         rec_begin();                                /* started some other way: record now */
-    adv = mclk_on() && song.playing ? mclk_adv(n) : n * (uint32_t)song.g[G_BPM];   /* (after a START) */
+    adv = ext_adv >= 0 && song.playing ? (uint32_t)ext_adv
+        : mclk_on() && song.playing ? mclk_adv(n) : n * (uint32_t)song.g[G_BPM];   /* (after a START) */
     clkout_block(n);                                  /* (2.7) CLK OUT */
     ft_block();
 #if FELUCCA_ARRANGER

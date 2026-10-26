@@ -61,6 +61,7 @@ void se_set_swing(int amount) { preview_global(G_SWING, amount); }
 void se_set_metronome(int on) { preview_global(G_CLOCK, on ? CLICK_ON : 0); }   /* (G_CLOCK is the CLICK setting) */
 void se_click(int accent) { click_on(accent); }
 void se_panic(void) { preview_panic(); }
+void se_set_advance(double beats) { ext_adv = beats < 0 ? -1 : (int32_t)(beats * BEAT_U + 0.5); }
 
 int se_engine_count(void) { return NENGINES; }
 const char *se_engine_name(int engine)

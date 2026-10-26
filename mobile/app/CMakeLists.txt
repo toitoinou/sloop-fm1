@@ -50,6 +50,12 @@ target_include_directories(sloop_engine PRIVATE ${SLOOP_GEN} ${SLOOP_ROOT}/firmw
 # as the firmware's host builds: wrapping arithmetic, no strict aliasing, the firmware's own warnings left alone
 target_compile_options(sloop_engine PRIVATE -O2 -fwrapv -fno-strict-aliasing -w)
 
+# ---- Ableton Link (header-only, with its Asio): mobile/third_party/link, fetched once by mobile/tools/get_link.sh
+set(LINK_DIR ${SLOOP_ROOT}/mobile/third_party/link)
+if(NOT EXISTS ${LINK_DIR}/include/ableton/Link.hpp)
+    execute_process(COMMAND sh ${SLOOP_ROOT}/mobile/tools/get_link.sh COMMAND_ERROR_IS_FATAL ANY)
+endif()
+
 # ---- the app
 juce_add_gui_app(SloopTouch
     PRODUCT_NAME "SLOOP Touch"
@@ -66,12 +72,18 @@ target_sources(SloopTouch PRIVATE
     Source/ProjectSheet.cpp
     Source/DawProject.cpp
     Source/Midi.cpp
+    Source/LinkSync.cpp
     Source/SelfTest.cpp)
 target_compile_definitions(SloopTouch PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:SloopTouch,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:SloopTouch,JUCE_VERSION>")
+# (Link's headers for LinkSync.cpp only; Linux and Android are Link's "Linux" platform)
+set_source_files_properties(Source/LinkSync.cpp PROPERTIES
+    INCLUDE_DIRECTORIES "${LINK_DIR}/include;${LINK_DIR}/modules/asio-standalone/asio/include"
+    COMPILE_DEFINITIONS "LINK_PLATFORM_LINUX=1;ASIO_STANDALONE=1;ASIO_NO_TYPEID=1;ASIO_VERSION_NAMESPACE=sloop_link_asio"
+    COMPILE_OPTIONS "-w")
 target_link_libraries(SloopTouch PRIVATE
     sloop_engine
     juce::juce_audio_utils

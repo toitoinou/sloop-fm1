@@ -305,7 +305,7 @@ void auditionSound (Controller&);                        // the track's sound, b
 void stepSound (Controller&, int direction);             // the track's next / previous preset (its engine's), or kit
 
 // the settings: the key and its scale, the swing; the app's metronome, count-in, recording quantize; the audio
-class SettingsSheet : public juce::Component
+class SettingsSheet : public juce::Component, private juce::Timer
 {
 public:
     SettingsSheet (Controller& c, std::function<void()> close, std::function<juce::String()> audioInfo,
@@ -316,6 +316,7 @@ public:
 
 private:
     void sync();
+    void timerCallback() override { sync(); }            // (Link: the apps found)
     juce::Rectangle<int> panel() const;
     Controller& ctl;
     std::function<void()> onClose;
@@ -326,7 +327,8 @@ private:
     juce::Slider swing;
     juce::TextButton metronome { juce::String::fromUTF8 ("Métronome") }, countIn { juce::String::fromUTF8 ("Décompte 1 mesure") },
         quantize { juce::String::fromUTF8 ("Enregistrer sur la grille") }, buffer, ok { "OK" },
-        midiInputs, bluetooth { juce::String::fromUTF8 ("Bluetooth MIDI…") }, clockOut { juce::String::fromUTF8 ("Horloge MIDI (sortie)") };
+        midiInputs, bluetooth { juce::String::fromUTF8 ("Bluetooth MIDI…") }, clockOut { juce::String::fromUTF8 ("Horloge MIDI (sortie)") },
+        link;
     struct Label : juce::Component
     {
         juce::String text;

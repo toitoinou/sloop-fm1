@@ -47,6 +47,9 @@ jobs:
       - name: Engine tables
         run: mobile/tools/gen_engine_tables.sh
 
+      - name: Ableton Link
+        run: mobile/tools/get_link.sh
+
       - name: Android Studio project (Projucer --resave)
         run: xvfb-run -a projucer/Projucer --resave mobile/app/SloopTouch.jucer
 

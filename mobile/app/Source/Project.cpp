@@ -143,7 +143,7 @@ std::optional<Project> Project::fromJson (const juce::String& text)
     Project p;
     const int format = (int) root["format"];
     p.name = root["name"].toString();
-    p.bpm = juce::jlimit (60, 200, (int) root.getProperty ("bpm", 118));
+    p.bpm = juce::jlimit (kMinBpm, kMaxBpm, (int) root.getProperty ("bpm", 118));
     p.swing = juce::jlimit (0, 100, (int) root.getProperty ("swing", 0));
     p.key.root = juce::jlimit (0, 11, (int) root.getProperty ("root", 0));
     p.key.scale = juce::jlimit (0, (int) scales().size() - 1, (int) root.getProperty ("scale", 0));
@@ -219,6 +219,7 @@ Prefs readPrefs()
     p.countIn = v.getProperty ("countIn", p.countIn);
     p.quantizeRec = v.getProperty ("quantizeRec", p.quantizeRec);
     p.midiClockOut = v.getProperty ("midiClockOut", p.midiClockOut);
+    p.link = v.getProperty ("link", p.link);
     return p;
 }
 void writePrefs (const Prefs& p)
@@ -228,6 +229,7 @@ void writePrefs (const Prefs& p)
     o->setProperty ("countIn", p.countIn);
     o->setProperty ("quantizeRec", p.quantizeRec);
     o->setProperty ("midiClockOut", p.midiClockOut);
+    o->setProperty ("link", p.link);
     folder().getChildFile ("prefs.json").replaceWithText (juce::JSON::toString (juce::var (o)));
 }
 } // namespace store

@@ -14,6 +14,7 @@ namespace sloop
 constexpr int kTracks = 8;          // DR, then T1..T7
 constexpr int kMaxSteps = 64;       // a clip's longest (SLOOP's NSTEP): 4 bars of 1/16
 constexpr int kBar = 16;            // a bar's steps: a new clip's length, and where launched clips start
+constexpr int kMinBpm = 40, kMaxBpm = 240;   // (SLOOP's BPM range)
 constexpr int kLanes = 16;
 constexpr int kRows = 24;           // the piano roll's rows: the degrees of the key's scale, from its root
 constexpr int kKnobs = 4;

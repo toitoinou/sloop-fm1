@@ -22,6 +22,7 @@ public:
         for (int id : kMixGlobals) { int def = 0; se_global_describe (id, nullptr, nullptr, &def, nullptr); globals[(size_t) id] = def; }
         if (restore) prefs = store::readPrefs();
         audio.setMetronome (prefs.metronome);
+        if (prefs.link) audio.setLink (true);
         if (auto saved = restore ? store::read (store::autosaveFile()) : std::nullopt) load (*saved);
         else
         {
@@ -46,6 +47,10 @@ public:
     std::vector<std::pair<int, int>> held;               // the steps held (row, step): knobs lock them
     std::array<Sound, kTracks> sounds = kDefaultSounds;   // DR: { -, kit }
     int seenParamSerial = -1;
+    int seenLinkSerial = 0;
+    double seenLinkTempo = 0;
+    bool seenLinkPlaying = false;
+    int linkPeers = -1;                                  // the other Link apps (-1: Link off)
     bool playing = false;
     bool recording = false;
     struct Pending { int track, slot, step; };
@@ -82,11 +87,12 @@ public:
             for (int t = 0; t < kTracks; ++t) queued[(size_t) t] = kNone;
         notify();
     }
-    void setBpm (int b) { bpm = juce::jlimit (60, 200, b); audio.setBpm (bpm); notify(); }
+    void setBpm (int b) { bpm = juce::jlimit (kMinBpm, kMaxBpm, b); audio.setBpm (bpm); notify(); }
     void setSwing (int v) { swing = juce::jlimit (0, 100, v); audio.setSwing (swing); notify(); }
     void setKey (Key k) { key = k; audio.setKey (key); notify(); }
     void setPrefs (const Prefs& p)
     {
+        if (p.link != prefs.link) audio.setLink (p.link);
         prefs = p;
         audio.setMetronome (prefs.metronome);
         store::writePrefs (prefs);
@@ -216,6 +222,28 @@ public:
         bool any = false;
         recordRepeats();
         if (audio.paramSerial.load() != seenParamSerial) { readParams(); any = true; }   // a sound brought its own values
+        if (const int n = prefs.link ? audio.link.peers() : -1; n != linkPeers) { linkPeers = n; any = true; }
+        if (const int ls = audio.linkSerial.load(); ls != seenLinkSerial)
+        {
+            // Link: what the session changed (another app's tempo, PLAY or STOP; this app's own come back the same)
+            seenLinkSerial = ls;
+            if (const double lt = audio.linkTempo.load(); std::abs (lt - seenLinkTempo) > 1.0e-6)
+            {
+                seenLinkTempo = lt;
+                bpm = juce::jlimit (kMinBpm, kMaxBpm, juce::roundToInt (lt));
+                any = true;
+            }
+            if (const bool lp = audio.linkPlaying.load(); lp != seenLinkPlaying)
+            {
+                seenLinkPlaying = lp;
+                if (lp != playing)
+                {
+                    playing = lp;
+                    if (! playing) queued.fill (kNone);
+                    any = true;
+                }
+            }
+        }
         for (auto it = pendingRecord.begin(); it != pendingRecord.end();)
             if (audio.position[it->track].load() != it->step || ! playing)
             {
