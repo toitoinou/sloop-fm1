@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- SLOOP Touch for Android (Projucer -> Builds/Android, an Android Studio / Gradle project).
+     JUCE is expected in app/JUCE (a checkout of JUCE 8.0.4, not in the repository), the engine's generated tables
+     in engine/gen (tools/gen_engine_tables.sh), Ableton Link and Signalsmith Stretch in third_party
+     (tools/get_deps.sh). The CI does all three: .github/workflows/app.yml. The header paths are relative to the exporter folder, Builds/Android
+     (Projucer moves them one level for its app/CMakeLists.txt) -->
+<JUCERPROJECT id="Sl00pT" name="SloopTouch" projectType="guiapp" version="0.1.0" companyName="SLOOP"
+              bundleIdentifier="org.sloop.touch" cppLanguageStandard="17" jucerFormatVersion="1"
+              displaySplashScreen="0" reportAppUsage="0"
+              defines="JUCE_WEB_BROWSER=0&#10;JUCE_USE_CURL=0&#10;JUCE_USE_MP3AUDIOFORMAT=1&#10;LINK_PLATFORM_LINUX=1&#10;ASIO_STANDALONE=1&#10;ASIO_NO_TYPEID=1&#10;ASIO_VERSION_NAMESPACE=sloop_link_asio">
+  <MAINGROUP id="Gr00p0" name="SloopTouch">
+    <GROUP id="Gr00p1" name="Source">
+      <FILE id="Fs001" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
+      <FILE id="Fs002" name="SelfTest.cpp" compile="1" resource="0" file="Source/SelfTest.cpp"/>
+      <GROUP id="Gs001" name="model">
+        <FILE id="Fs003" name="Bundle.cpp" compile="1" resource="0" file="Source/model/Bundle.cpp"/>
+        <FILE id="Fs004" name="Bundle.h" compile="0" resource="0" file="Source/model/Bundle.h"/>
+        <FILE id="Fs005" name="DawProject.cpp" compile="1" resource="0" file="Source/model/DawProject.cpp"/>
+        <FILE id="Fs006" name="DawProject.h" compile="0" resource="0" file="Source/model/DawProject.h"/>
+        <FILE id="Fs007" name="Model.h" compile="0" resource="0" file="Source/model/Model.h"/>
+        <FILE id="Fs008" name="Project.cpp" compile="1" resource="0" file="Source/model/Project.cpp"/>
+        <FILE id="Fs009" name="Project.h" compile="0" resource="0" file="Source/model/Project.h"/>
+        <FILE id="Fs010" name="Samples.cpp" compile="1" resource="0" file="Source/model/Samples.cpp"/>
+        <FILE id="Fs011" name="Samples.h" compile="0" resource="0" file="Source/model/Samples.h"/>
+      </GROUP>
+      <GROUP id="Gs002" name="audio">
+        <FILE id="Fs012" name="AudioEngine.cpp" compile="1" resource="0" file="Source/audio/AudioEngine.cpp"/>
+        <FILE id="Fs013" name="AudioEngine.h" compile="0" resource="0" file="Source/audio/AudioEngine.h"/>
+        <FILE id="Fs014" name="ClipPlayer.cpp" compile="1" resource="0" file="Source/audio/ClipPlayer.cpp"/>
+        <FILE id="Fs015" name="ClipPlayer.h" compile="0" resource="0" file="Source/audio/ClipPlayer.h"/>
+        <FILE id="Fs016" name="LinkSync.cpp" compile="1" resource="0" file="Source/audio/LinkSync.cpp"/>
+        <FILE id="Fs017" name="LinkSync.h" compile="0" resource="0" file="Source/audio/LinkSync.h"/>
+        <FILE id="Fs018" name="Midi.cpp" compile="1" resource="0" file="Source/audio/Midi.cpp"/>
+        <FILE id="Fs019" name="Midi.h" compile="0" resource="0" file="Source/audio/Midi.h"/>
+        <FILE id="Fs020" name="Scheduler.cpp" compile="1" resource="0" file="Source/audio/Scheduler.cpp"/>
+        <FILE id="Fs021" name="Scheduler.h" compile="0" resource="0" file="Source/audio/Scheduler.h"/>
+      </GROUP>
+      <GROUP id="Gs003" name="control">
+        <FILE id="Fs022" name="AudioTrack.cpp" compile="1" resource="0" file="Source/control/AudioTrack.cpp"/>
+        <FILE id="Fs023" name="Controller.cpp" compile="1" resource="0" file="Source/control/Controller.cpp"/>
+        <FILE id="Fs024" name="Controller.h" compile="0" resource="0" file="Source/control/Controller.h"/>
+        <FILE id="Fs025" name="Knobs.cpp" compile="1" resource="0" file="Source/control/Knobs.cpp"/>
+        <FILE id="Fs026" name="Mixer.cpp" compile="1" resource="0" file="Source/control/Mixer.cpp"/>
+        <FILE id="Fs027" name="Recording.cpp" compile="1" resource="0" file="Source/control/Recording.cpp"/>
+        <FILE id="Fs028" name="Session.cpp" compile="1" resource="0" file="Source/control/Session.cpp"/>
+        <FILE id="Fs029" name="UndoHistory.h" compile="0" resource="0" file="Source/control/UndoHistory.h"/>
+      </GROUP>
+      <GROUP id="Gs004" name="ui">
+        <FILE id="Fs030" name="AudioEditor.cpp" compile="1" resource="0" file="Source/ui/AudioEditor.cpp"/>
+        <FILE id="Fs031" name="AudioEditor.h" compile="0" resource="0" file="Source/ui/AudioEditor.h"/>
+        <FILE id="Fs032" name="Common.h" compile="0" resource="0" file="Source/ui/Common.h"/>
+        <FILE id="Fs033" name="KnobStrip.cpp" compile="1" resource="0" file="Source/ui/KnobStrip.cpp"/>
+        <FILE id="Fs034" name="KnobStrip.h" compile="0" resource="0" file="Source/ui/KnobStrip.h"/>
+        <FILE id="Fs035" name="MainComponent.cpp" compile="1" resource="0" file="Source/ui/MainComponent.cpp"/>
+        <FILE id="Fs036" name="MainComponent.h" compile="0" resource="0" file="Source/ui/MainComponent.h"/>
+        <FILE id="Fs037" name="MixerView.cpp" compile="1" resource="0" file="Source/ui/MixerView.cpp"/>
+        <FILE id="Fs038" name="MixerView.h" compile="0" resource="0" file="Source/ui/MixerView.h"/>
+        <FILE id="Fs039" name="PadsView.cpp" compile="1" resource="0" file="Source/ui/PadsView.cpp"/>
+        <FILE id="Fs040" name="PadsView.h" compile="0" resource="0" file="Source/ui/PadsView.h"/>
+        <FILE id="Fs041" name="ProjectSheet.cpp" compile="1" resource="0" file="Source/ui/ProjectSheet.cpp"/>
+        <FILE id="Fs042" name="ProjectSheet.h" compile="0" resource="0" file="Source/ui/ProjectSheet.h"/>
+        <FILE id="Fs043" name="SessionView.cpp" compile="1" resource="0" file="Source/ui/SessionView.cpp"/>
+        <FILE id="Fs044" name="SessionView.h" compile="0" resource="0" file="Source/ui/SessionView.h"/>
+        <FILE id="Fs045" name="SettingsSheet.cpp" compile="1" resource="0" file="Source/ui/SettingsSheet.cpp"/>
+        <FILE id="Fs046" name="SettingsSheet.h" compile="0" resource="0" file="Source/ui/SettingsSheet.h"/>
+        <FILE id="Fs047" name="SoundSheet.cpp" compile="1" resource="0" file="Source/ui/SoundSheet.cpp"/>
+        <FILE id="Fs048" name="SoundSheet.h" compile="0" resource="0" file="Source/ui/SoundSheet.h"/>
+        <FILE id="Fs049" name="StepGrid.cpp" compile="1" resource="0" file="Source/ui/StepGrid.cpp"/>
+        <FILE id="Fs050" name="StepGrid.h" compile="0" resource="0" file="Source/ui/StepGrid.h"/>
+        <FILE id="Fs051" name="StepSheet.cpp" compile="1" resource="0" file="Source/ui/StepSheet.cpp"/>
+        <FILE id="Fs052" name="StepSheet.h" compile="0" resource="0" file="Source/ui/StepSheet.h"/>
+        <FILE id="Fs053" name="Theme.h" compile="0" resource="0" file="Source/ui/Theme.h"/>
+        <FILE id="Fs054" name="TrackRail.cpp" compile="1" resource="0" file="Source/ui/TrackRail.cpp"/>
+        <FILE id="Fs055" name="TrackRail.h" compile="0" resource="0" file="Source/ui/TrackRail.h"/>
+        <FILE id="Fs056" name="Widgets.cpp" compile="1" resource="0" file="Source/ui/Widgets.cpp"/>
+        <FILE id="Fs057" name="Widgets.h" compile="0" resource="0" file="Source/ui/Widgets.h"/>
+      </GROUP>
+    </GROUP>
+    <GROUP id="Gr00p2" name="Engine">
+      <FILE id="Fi0011" name="sloop_engine.h" compile="0" resource="0" file="../engine/sloop_engine.h"/>
+      <FILE id="Fi0012" name="sloop_engine.c" compile="1" resource="0" file="../engine/sloop_engine.c"/>
+      <FILE id="Fi0020" name="plaits_glue.cc" compile="1" resource="0" file="../engine/plaits_glue.cc"/>
+      <FILE id="Fi0021" name="eng_plaits.c" compile="0" resource="0" file="../engine/eng_plaits.c"/>
+      <FILE id="Fi0061" name="obxd_glue.cc" compile="1" resource="0" file="../engine/obxd_glue.cc"/>
+      <FILE id="Fi0062" name="eng_obxd.c" compile="0" resource="0" file="../engine/eng_obxd.c"/>
+    </GROUP>
+    <GROUP id="Gr00p3" name="Plaits">
+      <FILE id="Fi0022" name="chord_bank.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/chords/chord_bank.cc"/>
+      <FILE id="Fi0023" name="additive_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/additive_engine.cc"/>
+      <FILE id="Fi0024" name="bass_drum_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/bass_drum_engine.cc"/>
+      <FILE id="Fi0025" name="chord_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/chord_engine.cc"/>
+      <FILE id="Fi0026" name="fm_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/fm_engine.cc"/>
+      <FILE id="Fi0027" name="grain_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/grain_engine.cc"/>
+      <FILE id="Fi0028" name="hi_hat_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/hi_hat_engine.cc"/>
+      <FILE id="Fi0029" name="modal_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/modal_engine.cc"/>
+      <FILE id="Fi0030" name="noise_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/noise_engine.cc"/>
+      <FILE id="Fi0031" name="particle_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/particle_engine.cc"/>
+      <FILE id="Fi0032" name="snare_drum_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/snare_drum_engine.cc"/>
+      <FILE id="Fi0033" name="speech_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/speech_engine.cc"/>
+      <FILE id="Fi0034" name="string_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/string_engine.cc"/>
+      <FILE id="Fi0035" name="swarm_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/swarm_engine.cc"/>
+      <FILE id="Fi0036" name="virtual_analog_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/virtual_analog_engine.cc"/>
+      <FILE id="Fi0037" name="waveshaping_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/waveshaping_engine.cc"/>
+      <FILE id="Fi0038" name="wavetable_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine/wavetable_engine.cc"/>
+      <FILE id="Fi0039" name="chiptune_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/chiptune_engine.cc"/>
+      <FILE id="Fi0040" name="phase_distortion_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/phase_distortion_engine.cc"/>
+      <FILE id="Fi0041" name="six_op_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/six_op_engine.cc"/>
+      <FILE id="Fi0042" name="string_machine_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/string_machine_engine.cc"/>
+      <FILE id="Fi0043" name="virtual_analog_vcf_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/virtual_analog_vcf_engine.cc"/>
+      <FILE id="Fi0044" name="wave_terrain_engine.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/engine2/wave_terrain_engine.cc"/>
+      <FILE id="Fi0045" name="algorithms.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/fm/algorithms.cc"/>
+      <FILE id="Fi0046" name="dx_units.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/fm/dx_units.cc"/>
+      <FILE id="Fi0047" name="modal_voice.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/modal_voice.cc"/>
+      <FILE id="Fi0048" name="resonator.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/resonator.cc"/>
+      <FILE id="Fi0049" name="string.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/string.cc"/>
+      <FILE id="Fi0050" name="string_voice.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/physical_modelling/string_voice.cc"/>
+      <FILE id="Fi0051" name="lpc_speech_synth.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth.cc"/>
+      <FILE id="Fi0052" name="lpc_speech_synth_controller.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth_controller.cc"/>
+      <FILE id="Fi0053" name="lpc_speech_synth_phonemes.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth_phonemes.cc"/>
+      <FILE id="Fi0054" name="lpc_speech_synth_words.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/lpc_speech_synth_words.cc"/>
+      <FILE id="Fi0055" name="naive_speech_synth.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/naive_speech_synth.cc"/>
+      <FILE id="Fi0056" name="sam_speech_synth.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/speech/sam_speech_synth.cc"/>
+      <FILE id="Fi0057" name="voice.cc" compile="1" resource="0" file="../third_party/plaits/plaits/dsp/voice.cc"/>
+      <FILE id="Fi0058" name="resources.cc" compile="1" resource="0" file="../third_party/plaits/plaits/resources.cc"/>
+      <FILE id="Fi0059" name="units.cc" compile="1" resource="0" file="../third_party/plaits/stmlib/dsp/units.cc"/>
+      <FILE id="Fi0060" name="random.cc" compile="1" resource="0" file="../third_party/plaits/stmlib/utils/random.cc"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_USE_ANDROID_OBOE="1"/>
+  <EXPORTFORMATS>
+    <ANDROIDSTUDIO targetFolder="Builds/Android" androidMinimumSDK="26" androidTargetSDK="34"
+                   androidEnableContentSharing="1" androidBluetoothScanNeeded="1"
+                   androidBluetoothConnectNeeded="1"
+                   androidOtherPermissions="android.permission.ACCESS_WIFI_STATE android.permission.ACCESS_NETWORK_STATE"
+                   androidScreenOrientation="unspecified"
+                   extraCompilerFlags="-fwrapv -fno-strict-aliasing">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" optimisation="1"
+                       headerPath="../../Source&#10;../../../engine&#10;../../../engine/gen&#10;../../../engine/core&#10;../../../third_party/plaits&#10;../../../third_party/obxd/Engine&#10;../../../third_party/link/include&#10;../../../third_party/link/modules/asio-standalone/asio/include&#10;../../../third_party/signalsmith-stretch/include&#10;../../../third_party/signalsmith-linear/include"/>
+        <CONFIGURATION isDebug="0" name="Release" optimisation="3"
+                       headerPath="../../Source&#10;../../../engine&#10;../../../engine/gen&#10;../../../engine/core&#10;../../../third_party/plaits&#10;../../../third_party/obxd/Engine&#10;../../../third_party/link/include&#10;../../../third_party/link/modules/asio-standalone/asio/include&#10;../../../third_party/signalsmith-stretch/include&#10;../../../third_party/signalsmith-linear/include"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="JUCE/modules"/>
+      </MODULEPATHS>
+    </ANDROIDSTUDIO>
+  </EXPORTFORMATS>
+</JUCERPROJECT>

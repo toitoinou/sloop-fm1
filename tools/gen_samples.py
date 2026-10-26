@@ -11,15 +11,10 @@ Sources:
   assets/samples-cc0/   CC0 samples (CREDITS.txt there): PIANO (a grand), BASS, VIBES, HORNS, STRGS, FLUTE,
                         SCRCH (tools/gen_builtin_hiphop.py makes them; FLUTE and the KIT:
                         tools/fetch_cc0.py), and the acoustic drum kit of the GM map (KIT)
-  gen_waves.py          Felucca's own drum sounds (the Hügelton Sample Pack): only SLICE's BREAK, or a
-                        GM kit role the CC0 kit lacks
+  (SLOOP's gen_waves.py, Felucca's own drum sounds of the Hügelton Sample Pack, all rights reserved, filled the GM
+  kit roles the CC0 kit lacks and SLICE's BREAK: not here. The CC0 kit has every role; build/genwav stays empty.)
 One SAMPLE preset is written per set (SET_PRESETS: its name and sound), plus EXTRA_PRESETS.
 A file named ..._m<n>.wav has its root given (MIDI note n); else it comes from the note in the name.
-
-With FELUCCA_SLICE=1 the SLICE engine's built-in BREAK (eng_slice.c) is rendered here
-too: one bar of 16ths arranged from Felucca's own generated drums, stored after every set
-and not one of the SAMPLE sets. Its slice table (decoder states on a 128-point grid, the hits as AUTO
-slices) is written with it: SLC_BREAK_INIT.
 
 The header is cached in build/gen_samples.cache under a hash of every input.
 """
@@ -450,7 +445,6 @@ def input_key(have_cc0):
 
 
 def main(out):
-    subprocess.run([sys.executable, str(Path(__file__).with_name("gen_waves.py")), str(GENDIR)], check=True)
     have_cc0 = CC0.exists() and any(CC0.glob("*/*.wav"))
     if not have_cc0:
         print("samples: no CC0 samples in assets/samples-cc0 - generated material only")
@@ -469,8 +463,6 @@ def main(out):
             if kind != "kit":                       # the CC0 KIT feeds the GM kit
                 b.cc0_set(name, kind)
     b.gm_kit(have_cc0)
-    if os.environ.get("FELUCCA_SLICE") == "1":       # SLICE's BREAK: only when that engine is built
-        b.slice_break()                             # last: the sets' offsets stay as they were
     text = b.header()
     Path(out).write_text(text)
     CACHE.parent.mkdir(parents=True, exist_ok=True)

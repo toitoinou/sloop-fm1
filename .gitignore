@@ -1,3 +1,12 @@
+# build outputs, JUCE checkout, Projucer output, the fetched libraries (tools/get_deps.sh), generated tables
 build/
+build-*/
+app/JUCE
+app/Builds/
+app/JuceLibraryCode/
+engine/gen/
+third_party/link/
+third_party/signalsmith-stretch/
+third_party/signalsmith-linear/
 .DS_Store
 __pycache__/
