@@ -136,6 +136,7 @@ void SessionGrid::paint (juce::Graphics& g)
     const bool blink = std::fmod (now(), 450.0) < 225.0;
     for (int r = 0; r < ctl.session.scenes(); ++r)
     {
+        paintAudio (g, r, blink);
         for (int t = 0; t < kTracks; ++t)
         {
             if (cellRect (t, r).isEmpty()) continue;
@@ -231,12 +232,74 @@ void SessionGrid::paint (juce::Graphics& g)
     g.drawText (juce::String::fromUTF8 ("+ Scène"), add, juce::Justification::centred);
 }
 
+// the audio track's cell: the clip's name, its beats, where it is in its loop
+void SessionGrid::paintAudio (juce::Graphics& g, int r, bool blink)
+{
+    if (cellRect (kAudio, r).isEmpty()) return;
+    auto box = cellRect (kAudio, r).toFloat();
+    const auto& clip = ctl.session.audio[(size_t) r];
+    if (! clip)
+    {
+        juce::Path p;
+        p.addRoundedRectangle (box.reduced (1.0f), theme::radius);
+        const float dash[] = { 4.0f, 4.0f };
+        juce::Path dashed;
+        juce::PathStrokeType (1.5f).createDashedStroke (dashed, p, dash, 2);
+        g.setColour (theme::cellBeat);
+        g.fillPath (dashed);
+        g.setColour (theme::dim);
+        g.setFont (font (11.0f));
+        g.drawText (juce::String::fromUTF8 ("+ son"), box, juce::Justification::centred);
+        return;
+    }
+    const bool playing = ctl.audio.audioSlot.load() == r;
+    const bool waiting = ctl.audioQueued == r || (ctl.audioQueued == Controller::kStop && playing);
+    const auto col = theme::track (kAudio);
+    g.setColour (mixed (col, playing ? 0.62f : 0.24f).withMultipliedAlpha (waiting && ! blink ? 0.4f : 1.0f));
+    g.fillRoundedRectangle (box, theme::radius);
+    auto inner = box.reduced (8.0f, 7.0f);
+    g.setColour (playing ? theme::ink : theme::fg);
+    g.setFont (font (12.5f, true));
+    g.drawText (clip->name, inner.removeFromTop (16.0f), juce::Justification::topLeft, true);
+    g.setFont (font (10.5f));
+    g.setColour (playing ? theme::ink : theme::dim);
+    g.drawText (juce::String (clip->beats()) + " t  " + juce::String (juce::roundToInt (clip->bpm)) + (clip->stretch ? "" : " ~"),
+                inner.removeFromTop (14.0f), juce::Justification::topLeft, true);
+    if (playing && ctl.playing)
+    {
+        g.setColour (theme::ink.withAlpha (0.8f));
+        g.fillRect (box.getX(), box.getBottom() - 3.0f, box.getWidth() * ctl.audio.audioProgress.load(), 3.0f);
+    }
+}
+
+void SessionGrid::audioMenu (int s)
+{
+    juce::PopupMenu m;
+    const auto& clip = ctl.session.audio[(size_t) s];
+    if (! clip) return;
+    m.addSectionHeader (clip->name);
+    m.addItem (1, juce::String::fromUTF8 ("Éditer"));
+    m.addItem (2, "Dupliquer dessous");
+    m.addItem (4, juce::String::fromUTF8 ("Remplacer le son…"));
+    m.addItem (3, "Effacer");
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (
+                         localAreaToGlobal (cellRect (kAudio, s))),
+                     [this, s] (int r)
+                     {
+                         if (r == 1 && onAudioEdit) onAudioEdit (s);
+                         if (r == 2) ctl.duplicateAudio (s);
+                         if (r == 3) ctl.deleteAudio (s);
+                         if (r == 4 && onAudioImport) onAudioImport (s);
+                     });
+}
+
 void SessionGrid::timerCallback()
 {
     if (press.source >= 0 && ! press.done && ! press.chained && now() - press.time > kLongPress)
     {
         press.done = true;
         if (press.scene >= 0) sceneMenu (press.scene);
+        else if (press.t == kAudio) audioMenu (press.s);
         else if (press.t >= 0 && (ctl.session.at (press.t, press.s) || ctl.canPaste (press.t))) clipMenu (press.t, press.s);
     }
     repaint();
@@ -248,12 +311,12 @@ void SessionGrid::mouseDown (const juce::MouseEvent& e)
     const int src = e.source.getIndex();
     int t = -1, s = -1;
     for (int r = 0; r < ctl.session.scenes() && t < 0; ++r)
-        for (int k = 0; k < kTracks; ++k)
+        for (int k = 0; k < kColumns; ++k)
             if (cellRect (k, r).contains (p)) { t = k; s = r; break; }
     if (press.source >= 0 && press.source != src)
     {
         // a second finger while a clip is held: the chain grows (same track only)
-        if (t == press.t && t >= 0 && ctl.session.at (t, s)) { press.list.push_back (s); press.chained = true; }
+        if (t == press.t && t >= 0 && t < kTracks && ctl.session.at (t, s)) { press.list.push_back (s); press.chained = true; }
         return;
     }
     press = {};
@@ -279,6 +342,15 @@ void SessionGrid::mouseUp (const juce::MouseEvent& e)
     if (p.done) return;
     if (p.scene >= 0) { ctl.launchScene (p.scene); return; }
     if (p.t < 0) return;
+    if (p.t == kAudio)                                   // the audio track: no chain; an empty row takes a sound
+    {
+        if (! ctl.session.audio[(size_t) p.s]) { if (onAudioImport) onAudioImport (p.s); return; }
+        const int key = kAudio * 10000 + p.s;
+        if (now() - lastTap[key] < kDoubleTap) { lastTap[key] = 0; if (onAudioEdit) onAudioEdit (p.s); return; }
+        lastTap[key] = now();
+        ctl.launchAudio (p.s);
+        return;
+    }
     if (p.chained) { ctl.chain (p.t, p.list); return; }
     if (! ctl.session.at (p.t, p.s)) { ctl.createClip (p.t, p.s); ctl.select (p.t); return; }
     const int key = p.t * 10000 + p.s;
@@ -354,27 +426,28 @@ void SessionView::resized()
 void SessionView::paint (juce::Graphics& g)
 {
     const int sceneW = grid.sceneW(), colW = grid.colW();
-    for (int t = grid.first; t < grid.first + grid.shown() && t < kTracks; ++t)
+    for (int t = grid.first; t < grid.first + grid.shown() && t < SessionGrid::kColumns; ++t)
     {
         juce::Rectangle<int> r ((t - grid.first) * (colW + theme::gap), 0, colW, headH);
         g.setColour (theme::track (t));
         g.setFont (font (14.0f, true));
-        g.drawText (kTrackIds[t], r.withTrimmedLeft (8), juce::Justification::centredLeft);
+        g.drawText (t == kAudio ? "AU" : kTrackIds[t], r.withTrimmedLeft (8), juce::Justification::centredLeft);
         auto stop = r.removeFromRight (34).reduced (2, 4).toFloat();
-        const bool off = ctl.audio.playingSlot[t].load() < 0;
-        g.setColour (ctl.queued[(size_t) t] == Controller::kStop ? theme::fg : theme::cell);
+        const bool off = t == kAudio ? ctl.audio.audioSlot.load() < 0 : ctl.audio.playingSlot[t].load() < 0;
+        const bool stopping = t == kAudio ? ctl.audioQueued == Controller::kStop : ctl.queued[(size_t) t] == Controller::kStop;
+        g.setColour (stopping ? theme::fg : theme::cell);
         g.fillRoundedRectangle (stop, theme::radius);
         g.setColour (theme::dim.withAlpha (off ? 0.35f : 1.0f));
         g.fillRect (stop.withSizeKeepingCentre (9, 9));
     }
     g.setColour (theme::dim);
     auto corner = juce::Rectangle<int> (getWidth() - sceneW, 0, sceneW, headH);
-    if (grid.shown() < kTracks)                          // the pages of tracks: < >
+    if (grid.shown() < SessionGrid::kColumns)            // the pages of tracks: < >
     {
         for (int i = 0; i < 2; ++i)
         {
             auto b = (i == 0 ? corner.withWidth (sceneW / 2) : corner.withTrimmedLeft (sceneW / 2)).reduced (2, 4).toFloat();
-            const bool can = i == 0 ? grid.first > 0 : grid.first + grid.shown() < kTracks;
+            const bool can = i == 0 ? grid.first > 0 : grid.first + grid.shown() < SessionGrid::kColumns;
             g.setColour (theme::cellBeat.withAlpha (can ? 1.0f : 0.35f));
             g.fillRoundedRectangle (b, theme::radius);
             g.setColour (theme::fg.withAlpha (can ? 1.0f : 0.35f));
@@ -392,12 +465,13 @@ void SessionView::mouseUp (const juce::MouseEvent& e)
     const int sceneW = grid.sceneW(), colW = grid.colW();
     if (e.getPosition().x >= getWidth() - sceneW)
     {
-        if (grid.shown() < kTracks) grid.page (e.getPosition().x < getWidth() - sceneW / 2 ? -1 : 1);
+        if (grid.shown() < SessionGrid::kColumns) grid.page (e.getPosition().x < getWidth() - sceneW / 2 ? -1 : 1);
         repaint();
         return;
     }
     const int t = grid.first + e.getPosition().x / (colW + theme::gap);
-    if (t >= grid.first && t < grid.first + grid.shown() && t < kTracks) { ctl.stopTrack (t); ctl.notify(); }
+    if (t == kAudio && t < grid.first + grid.shown()) { ctl.stopAudio(); ctl.notify(); }
+    else if (t >= grid.first && t < grid.first + grid.shown() && t < kTracks) { ctl.stopTrack (t); ctl.notify(); }
 }
 
 // =================================================================== the step grid / piano roll
@@ -836,7 +910,7 @@ void PadsView::mouseUp (const juce::MouseEvent& e)
 // =================================================================== the mixer
 juce::Rectangle<int> MixerView::stripRect (int strip) const
 {
-    if (strip == kTracks) return getLocalBounds().removeFromRight (masterW());
+    if (strip == kMaster) return getLocalBounds().removeFromRight (masterW());
     const int v = strip - first, n = shown(), w = (getWidth() - masterW() - 8) / n;
     if (v < 0 || v >= n) return {};
     return { v * w, 0, w - 4, getHeight() };
@@ -846,10 +920,10 @@ juce::Rectangle<int> MixerView::partRect (int strip, Part part) const
     auto r = stripRect (strip);
     if (r.isEmpty()) return {};
     r = r.reduced (4, 4);
-    const bool master = strip == kTracks;
+    const bool master = strip == kMaster;
     auto top = r.removeFromTop (30);
-    if (part == name) return master && shown() < kTracks ? top.withTrimmedRight (top.getWidth() / 2) : top;
-    if (master && shown() < kTracks)
+    if (part == name) return master && shown() < kStrips ? top.withTrimmedRight (top.getWidth() / 2) : top;
+    if (master && shown() < kStrips)
     {
         auto pages = top.withTrimmedLeft (top.getWidth() / 2);
         if (part == pagePrev) return pages.removeFromLeft (pages.getWidth() / 2).reduced (1);
@@ -881,7 +955,7 @@ MixerView::Control MixerView::control (int strip, Part part) const
         c.label = label;
         c.set = [&k, id] (int v) { k.setGlobal (id, v); };
     };
-    if (strip == kTracks)                               // the master: mute / solo are not there; pan rev dly: the bus
+    if (strip == kMaster)                               // the master: mute / solo are not there; pan rev dly: the bus
     {
         if (part == pan) global (SE_G_FILT, "FILTRE");
         if (part == rev) global (SE_G_DUST, "DUST");
@@ -890,6 +964,12 @@ MixerView::Control MixerView::control (int strip, Part part) const
         {
             c = { k.masterVolume, 0, 127, 100, [&k] (int v) { k.setMasterVolume (v); }, "VOL", true };
         }
+        return c;
+    }
+    if (strip == kAudio)                                 // the audio track: the app's own mix (no send)
+    {
+        if (part == pan) c = { k.audioPan, -64, 63, 0, [&k] (int v) { k.setAudioMix (k.audioLevel, v, k.audioMuted); }, "PAN", true };
+        if (part == fader) c = { k.audioLevel, 0, 127, 90, [&k] (int v) { k.setAudioMix (v, k.audioPan, k.audioMuted); }, "LVL", true };
         return c;
     }
     auto param = [&c, &k, strip] (int id, const char* label)
@@ -914,7 +994,7 @@ MixerView::Control MixerView::control (int strip, Part part) const
 }
 MixerView::Hit MixerView::hitAt (juce::Point<int> p) const
 {
-    for (int strip = 0; strip <= kTracks; ++strip)
+    for (int strip = 0; strip <= kMaster; ++strip)
         for (auto part : { name, mute, solo, pan, rev, dly, fader, pagePrev, pageNext, record })
             if (partRect (strip, part).contains (p)) return { strip, part };
     return {};
@@ -927,28 +1007,29 @@ void MixerView::timerCallback()
         const float level = juce::jlimit (0.0f, 1.0f, (float) ctl.audio.peak[t].exchange (0) / 32768.0f);   // (Q15)
         meter[(size_t) t] = juce::jmax (level, meter[(size_t) t] * 0.86f);
     }
-    meter[kTracks] = juce::jmax (juce::jlimit (0.0f, 1.0f, ctl.audio.masterPeak.exchange (0.0f)), meter[kTracks] * 0.86f);
+    meter[kAudio] = juce::jmax (juce::jlimit (0.0f, 1.0f, (float) ctl.audio.audioPeak.exchange (0) / 32768.0f), meter[kAudio] * 0.86f);
+    meter[kMaster] = juce::jmax (juce::jlimit (0.0f, 1.0f, ctl.audio.masterPeak.exchange (0.0f)), meter[kMaster] * 0.86f);
     if (isVisible()) repaint();
 }
 void MixerView::paint (juce::Graphics& g)
 {
-    for (int strip = 0; strip <= kTracks; ++strip)
+    for (int strip = 0; strip <= kMaster; ++strip)
     {
         auto box = stripRect (strip);
         if (box.isEmpty()) continue;
-        const bool master = strip == kTracks;
+        const bool master = strip == kMaster;
         const auto col = master ? theme::fg : theme::track (strip);
         g.setColour (! master && strip == ctl.sel ? theme::cellBeat : theme::panel);
         g.fillRoundedRectangle (box.toFloat(), theme::radius);
         auto nm = partRect (strip, name);
         g.setColour (col);
         g.setFont (font (14.0f, true));
-        g.drawText (master ? juce::String (box.getWidth() < 120 ? "MST" : "MASTER") : juce::String (trackId (strip)), nm.withTrimmedLeft (4), juce::Justification::centredLeft, true);
-        if (master && shown() < kTracks)
+        g.drawText (master ? juce::String (box.getWidth() < 120 ? "MST" : "MASTER") : strip == kAudio ? juce::String ("AU") : juce::String (trackId (strip)), nm.withTrimmedLeft (4), juce::Justification::centredLeft, true);
+        if (master && shown() < kStrips)
             for (auto p : { pagePrev, pageNext })
             {
                 auto r = partRect (strip, p).toFloat();
-                const bool can = p == pagePrev ? first > 0 : first + shown() < kTracks;
+                const bool can = p == pagePrev ? first > 0 : first + shown() < kStrips;
                 g.setColour (theme::cellBeat.withAlpha (can ? 1.0f : 0.35f));
                 g.fillRoundedRectangle (r, theme::radius);
                 g.setColour (theme::fg.withAlpha (can ? 1.0f : 0.35f));
@@ -970,7 +1051,7 @@ void MixerView::paint (juce::Graphics& g)
             for (auto p : { mute, solo })
             {
                 auto r = partRect (strip, p).toFloat();
-                const bool on = p == mute ? ctl.muted[(size_t) strip] : (ctl.soloMask >> strip & 1u) != 0;
+                const bool on = p == mute ? (strip == kAudio ? ctl.audioMuted : ctl.muted[(size_t) strip]) : (ctl.soloMask >> strip & 1u) != 0;
                 g.setColour (on ? (p == mute ? theme::rec : juce::Colour (0xffe0c45a)) : theme::cell);
                 g.fillRoundedRectangle (r, theme::radius);
                 g.setColour (on ? theme::ink : theme::fg);
@@ -1030,7 +1111,7 @@ void MixerView::mouseDown (const juce::MouseEvent& e)
     if (h.strip < 0) return;
     if (h.part == pagePrev || h.part == pageNext)
     {
-        first = juce::jlimit (0, kTracks - shown(), first + (h.part == pagePrev ? -1 : 1) * shown());
+        first = juce::jlimit (0, kStrips - shown(), first + (h.part == pagePrev ? -1 : 1) * shown());
         repaint();
         return;
     }
@@ -1049,6 +1130,12 @@ void MixerView::mouseDown (const juce::MouseEvent& e)
         }
         repaint();
         return;
+    }
+    if (h.strip == kAudio)
+    {
+        if (h.part == name) return;
+        if (h.part == mute) { ctl.setAudioMix (ctl.audioLevel, ctl.audioPan, ! ctl.audioMuted); return; }
+        if (h.part == solo) { ctl.toggleSolo (kAudio); return; }
     }
     if (h.strip < kTracks)
     {

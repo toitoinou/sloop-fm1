@@ -3,6 +3,7 @@
 // session plays, a clip waits for the bar, a chain takes turns, the sound is not silent. Exit code 0 = passed.
 #include "Controller.h"
 #include "DawProject.h"
+#include "Samples.h"
 #include "sloop_engine.h"
 
 namespace sloop
@@ -454,6 +455,83 @@ int runSelfTest()
         run (0.5);
         check (juno > dry * 10.0 + 1e-3 && vib > 1.0, "MOD: the Juno chorus is stereo, the vibrato sounds");
     }
+    // the audio track: a sample of 8 beats at 100 BPM (a click on each), its tempo from its name, played in a song at
+    // 120: its clicks every half second, stretched or like a record; a project keeps it
+    {
+        if (ctl.playing) ctl.togglePlay();
+        run (0.1);
+        const auto wavFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("selftest clicks 100bpm.wav");
+        {
+            juce::AudioBuffer<float> clicks (2, (int) (8 * 0.6 * 44100.0));
+            clicks.clear();
+            for (int k = 0; k < 8; ++k)
+                for (int i = 0; i < 441; ++i)
+                {
+                    const float v = 0.8f * std::sin (2.0f * juce::MathConstants<float>::pi * 1000.0f * (float) i / 44100.0f) * (1.0f - (float) i / 441.0f);
+                    clicks.setSample (0, k * 26460 + i, v);
+                    clicks.setSample (1, k * 26460 + i, v);
+                }
+            wavFile.deleteFile();
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (wavFile.createOutputStream().release(), 44100.0, 2, 24, {}, 0));
+            w->writeFromAudioSampleBuffer (clicks, 0, clicks.getNumSamples());
+        }
+        juce::String error;
+        const int row = 5;
+        const bool imported = ctl.importAudio (row, juce::URL (wavFile), error);
+        const auto clip = imported ? *ctl.session.audio[(size_t) row] : AudioClip {};
+        check (imported && std::abs (clip.bpm - 100.0) < 1e-9 && clip.beats() == 8, "an audio clip: imported, its tempo from its name");
+        ctl.setBpm (120);
+        ctl.toggleSolo (kAudio);
+        auto intervals = [&] (bool stretched)
+        {
+            auto c = *ctl.session.audio[(size_t) row];
+            c.stretch = stretched;
+            ctl.setAudioClip (row, c);
+            ctl.launchAudio (row);
+            ctl.togglePlay();
+            std::vector<double> onsets;
+            double last = -1.0e9;
+            for (long f = 0; f < (long) (rate * 3.9); f += block)
+            {
+                audio.audioDeviceIOCallbackWithContext (nullptr, 0, out.getArrayOfWritePointers(), 2, block, {});
+                for (int k = 0; k < block; ++k)
+                    if (std::abs (out.getSample (0, k)) > 0.2f && (double) (f + k) - last > rate * 0.2)
+                        onsets.push_back (last = (double) (f + k));
+            }
+            ctl.togglePlay();
+            run (0.1);
+            double mean = 0.0, worst = 0.0;
+            for (size_t i = 1; i < onsets.size(); ++i) mean += (onsets[i] - onsets[i - 1]) / (double) (onsets.size() - 1);
+            for (size_t i = 1; i < onsets.size(); ++i) worst = juce::jmax (worst, std::abs (onsets[i] - onsets[i - 1] - rate * 0.5));
+            std::printf ("      audio track (%s): %d clicks, every %.1f frames (%.1f off at most)\n", stretched ? "stretch" : "speed",
+                         (int) onsets.size(), mean, worst);
+            return onsets.size() >= 7 && std::abs (mean - rate * 0.5) < rate * 0.004 && worst < rate * 0.01;
+        };
+        const bool speed = intervals (false), stretched = intervals (true);
+        ctl.toggleSolo (kAudio);
+        check (speed && stretched, "the audio track: on the song's beats at its tempo, stretched or sped up");
+        const auto back = Project::fromJson (ctl.snapshot().toJson());
+        check (back && back->session.audio.size() == ctl.session.audio.size() && back->session.audio[(size_t) row]
+                   && back->session.audio[(size_t) row]->file == clip.file && back->session.audio[(size_t) row]->end == clip.end,
+               "a project keeps its audio clips");
+        {
+            const auto data = dawproject::zip (ctl.snapshot());
+            juce::MemoryInputStream in (data, false);
+            juce::ZipFile zip (in);
+            const auto xml = dawproject::projectXml (ctl.snapshot());
+            if (const auto dump = juce::SystemStats::getEnvironmentVariable ("SLOOP_DAWPROJECT_DUMP", {}); dump.isNotEmpty())
+                juce::File (dump).replaceWithText (xml);       // (to validate against the DAWproject schema)
+            check (zip.getEntry ("audio/" + clip.file) != nullptr && xml.contains ("<Warps") && xml.contains ("contentType=\"audio\""),
+                   "a DAWproject export carries the audio clips and their samples");
+        }
+        ctl.deleteAudio (row);
+        run (0.1);
+        SampleBank::folder().getChildFile (clip.file).deleteFile();
+        wavFile.deleteFile();
+        ctl.setBpm (118);
+    }
+
     // Ableton Link, alone on the network (in real time: Link's clock is the system's): PLAY starts at once, the song
     // follows the session's tempo (another app's) and is on its beat; the session's STOP stops it
     {

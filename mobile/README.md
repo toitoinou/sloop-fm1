@@ -144,8 +144,12 @@ et des captures d'écran, à télécharger dans l'onglet *Actions* de GitHub (se
 - [x] MIDI : les entrées (USB, Bluetooth après appairage) jouent la piste choisie et s'enregistrent, CC 21-24 /
   70-73 sur les boutons, START / STOP ; l'horloge MIDI en sortie (Réglages).
 - [x] Ableton Link (Réglages) : le tempo, la mesure et Play / Stop partagés avec les apps du même Wi-Fi (Live, Bitwig,
-  Koala, G-Stomper…) ; Play attend la mesure suivante de la session. `mobile/tools/get_link.sh` récupère Link (GPL-2.0+)
+  Koala, G-Stomper…) ; Play attend la mesure suivante de la session. `mobile/tools/get_deps.sh` récupère Link (GPL-2.0+)
   dans `mobile/third_party/link`.
+- [x] Une piste audio (AU, la dernière colonne de la session) : un son importé (WAV, AIFF, FLAC, Ogg, MP3, ou un
+  enregistrement de l'app) par ligne, son début et sa fin (le fichier n'est pas touché), son tempo à la main ou au TAP
+  en l'écoutant ; il joue autant de temps du morceau, étiré (Signalsmith Stretch, la hauteur gardée) ou accéléré comme
+  un disque, lancé à la mesure comme les autres clips ; sa tranche dans le mixer ; dans l'export DAWproject.
 - [ ] L'export audio piste par piste.
 - [ ] MIDI (USB, Bluetooth) et lien avec le FM-1.
 - [ ] Une piste guitare (NAM / TONE3000).

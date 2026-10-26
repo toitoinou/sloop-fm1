@@ -105,6 +105,14 @@ void AudioEngine::setLink (bool on)
     if (! on) link.enable (false);
     Command c; c.type = Type::link; c.a = on; post (std::move (c));
 }
+void AudioEngine::setAudioClip (When when, int row, const ClipPlayer::Clip& clip)
+{
+    Command c; c.type = Type::audio; c.when = when; c.a = row; c.audio = clip; post (std::move (c));
+}
+void AudioEngine::preview (const ClipPlayer::Clip& clip, bool on)
+{
+    Command c; c.type = Type::preview; c.a = on; c.audio = clip; post (std::move (c));
+}
 void AudioEngine::setSolo (unsigned mask) { Command c; c.type = Type::solo; c.a = (int) mask; post (std::move (c)); }
 void AudioEngine::setGlobal (int id, int value) { Command c; c.type = Type::global; c.a = id; c.b = value; post (std::move (c)); }
 void AudioEngine::repeat (int track, int id, int velocity, int rate, bool on)
@@ -228,10 +236,14 @@ void AudioEngine::renderEngineBlock()
         const double us = 1.0e6 / se_sample_rate();
         followLink (callbackTime + (int64_t) (staged * us), callbackTime + (int64_t) ((staged + frames) * us), frames);
     }
+    const bool moving = running.load (std::memory_order_relaxed);
+    const double beats = ! moving ? 0.0 : linkOn ? linkMoved : frames * tempo / (60.0 * se_sample_rate());
     const float* o = se_render();
     auto* l = staging.getWritePointer (0, staged);
     auto* r = staging.getWritePointer (1, staged);
-    for (int i = 0; i < frames; ++i) { l[i] = o[2 * i]; r[i] = o[2 * i + 1]; }
+    const float engineGain = engineSilent ? 0.0f : 1.0f;   // (only the audio track soloed)
+    for (int i = 0; i < frames; ++i) { l[i] = o[2 * i] * engineGain; r[i] = o[2 * i + 1] * engineGain; }
+    renderAudioTrack (l, r, frames, beats);
     staged += frames;
     runRepeats (frames);
     for (int t = 0; t < kTracks; ++t)                    // (the meters: the loudest since the UI looked)
@@ -416,9 +428,39 @@ void AudioEngine::apply (Command& c)
             unsigned m = 0;                              // (the app's tracks -> the engine's)
             for (int t = 0; t < kTracks; ++t) if ((unsigned) c.a >> t & 1u) m |= 1u << engineTrack (t);
             se_set_solo (m);
+            audioSolo = ((unsigned) c.a >> kAudio & 1u) != 0;
+            engineSilent = audioSolo && m == 0;          // (the audio track alone)
+            soloAny = c.a != 0;
             break;
         }
         case Type::global: se_set_global (c.a, c.b); break;
+        case Type::audio:
+            if (c.when == When::update)                  // the clip edited: where it plays, where it waits
+            {
+                if (audioRow == c.a) { audioNow = c.audio; player.update (c.audio); }
+                if (audioPending && audioNextRow == c.a) audioNext = c.audio;
+            }
+            else if (c.when == When::nextBar && running)
+            {
+                audioPending = true;
+                audioNextRow = c.a;
+                audioNext = c.audio;
+                audioAt = (std::floor (songBeat / 4.0 + 1.0e-9) + 1.0) * 4.0;
+            }
+            else                                         // at once: from the start of the bar playing
+            {
+                audioPending = false;
+                audioRow = c.a;
+                audioNow = c.audio;
+                if (audioRow < 0) player.stop();
+                else player.start (audioNow, running ? std::floor (songBeat / 4.0 + 1.0e-9) * 4.0 : 0.0);
+                audioSlot = audioRow;
+            }
+            break;
+        case Type::preview:
+            if (c.a) { previewPlayer.start (c.audio, 0.0); previewBeat = 0; }
+            else { previewPlayer.stop(); previewProgress = -1.0f; }
+            break;
         case Type::renumber:
             for (int t = 0; t < kTracks; ++t)
             {
@@ -427,6 +469,9 @@ void AudioEngine::apply (Command& c)
                 for (int i = 0; i < s.next.n; ++i) if (s.next.slots[i] >= c.a) s.next.slots[i] += c.b;
                 if (s.n) playingSlot[t] = s.slots[s.idx];
             }
+            if (audioRow >= c.a) audioRow += c.b;
+            if (audioNextRow >= c.a) audioNextRow += c.b;
+            audioSlot = audioRow;
             break;
         case Type::playlist:
         {
@@ -496,6 +541,7 @@ void AudioEngine::followLink (int64_t start, int64_t end, int frames)
     {
         stopTransport();
     }
+    linkMoved = 0;
     if (! running.load (std::memory_order_relaxed)) return;
     constexpr double beatUnits = 44100.0 * 60.0;        // (the engine's clock: a sample at 1 BPM, firmware core.h)
     const double nominal = frames / (double) se_sample_rate() * st.tempo / 60.0;
@@ -503,6 +549,52 @@ void AudioEngine::followLink (int64_t start, int64_t end, int frames)
     const double moved = std::round (ahead * beatUnits) / beatUnits;
     se_set_advance (moved);
     linkBeat += moved;
+    linkMoved = moved;
+}
+
+// the audio track over the block: its clip on the song's beats (the one waiting starts on its bar), at its level and
+// pan; then the clip listened to alone, at its own pace
+void AudioEngine::renderAudioTrack (float* l, float* r, int frames, double beats)
+{
+    frames = juce::jmin (frames, (int) mixL.size());
+    std::fill (mixL.begin(), mixL.begin() + frames, 0.0f);
+    std::fill (mixR.begin(), mixR.begin() + frames, 0.0f);
+    if (running.load (std::memory_order_relaxed) && beats > 0.0)
+    {
+        if (audioPending && songBeat + beats > audioAt)
+        {
+            audioPending = false;
+            audioRow = audioNextRow;
+            audioNow = audioNext;
+            if (audioRow < 0) player.stop();
+            else player.start (audioNow, audioAt);
+            audioSlot = audioRow;
+        }
+        player.render (songBeat, songBeat + beats, mixL.data(), mixR.data(), frames);
+        songBeat += beats;
+        audioProgress = (float) player.progress (songBeat);
+    }
+    const bool heard = ! audioMute.load (std::memory_order_relaxed) && (! soloAny || audioSolo);
+    const float level = heard ? audioLevel.load (std::memory_order_relaxed) : 0.0f;
+    const float pan = audioPan.load (std::memory_order_relaxed);
+    const float gl = level * std::sqrt (0.5f * (1.0f - pan)) * 1.41421356f, gr = level * std::sqrt (0.5f * (1.0f + pan)) * 1.41421356f;
+    float pk = 0.0f;
+    for (int i = 0; i < frames; ++i)
+    {
+        const float a = mixL[(size_t) i] * gl, b = mixR[(size_t) i] * gr;
+        l[i] += a;
+        r[i] += b;
+        pk = juce::jmax (pk, std::abs (a), std::abs (b));
+    }
+    if (const int q = (int) (juce::jmin (1.0f, pk) * 32767.0f); q > audioPeak.load (std::memory_order_relaxed))
+        audioPeak.store (q, std::memory_order_relaxed);
+    if (previewPlayer.playing())                        // (at its own pace: a beat of it lasts its own beat)
+    {
+        const double b = frames * previewPlayer.beatsPerFrame();
+        previewPlayer.render (previewBeat, previewBeat + b, l, r, frames);
+        previewBeat += b;
+        previewProgress = (float) previewPlayer.progress (previewBeat);
+    }
 }
 
 void AudioEngine::runRepeats (int frames)
@@ -550,6 +642,9 @@ void AudioEngine::startTransport()
         playingSlot[t] = s.n ? s.slots[0] : -1;
         framesInStep[(size_t) t] = 0;
     }
+    songBeat = 0;
+    if (audioPending) { audioRow = audioNextRow; audioNow = audioNext; audioPending = false; audioSlot = audioRow; }
+    if (audioRow >= 0) player.start (audioNow, 0.0);
     se_play (1);
     running = true;
 }
@@ -560,6 +655,9 @@ void AudioEngine::stopTransport()
     running = false;
     countingIn = false;
     countIn = 0;
+    if (audioPending) { audioRow = audioNextRow; audioNow = audioNext; audioPending = false; audioSlot = audioRow; }
+    player.stop();
+    audioProgress = 0.0f;
     for (int t = 0; t < kTracks; ++t)
     {
         auto& s = tracks[(size_t) t];

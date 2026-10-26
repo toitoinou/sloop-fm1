@@ -1,6 +1,9 @@
-# JUCE checkout, Ableton Link, Projucer output and the engine's generated tables (mobile/README.md)
+# JUCE checkout, the libraries fetched (tools/get_deps.sh), Projucer output and the engine's generated tables
+# (mobile/README.md)
 app/JUCE
 app/Builds/
 app/JuceLibraryCode/
 engine/gen/
 third_party/link/
+third_party/signalsmith-stretch/
+third_party/signalsmith-linear/

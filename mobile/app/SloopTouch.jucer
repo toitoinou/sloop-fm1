@@ -2,14 +2,14 @@
 
 <!-- SLOOP Touch for Android (Projucer -> Builds/Android, an Android Studio / Gradle project).
      JUCE is expected in mobile/app/JUCE (a checkout of JUCE 8.0.4, not in the repository), and the engine's
-     generated tables in mobile/engine/gen (mobile/tools/gen_engine_tables.sh), Ableton Link in
-     mobile/third_party/link (mobile/tools/get_link.sh). The CI does all three:
+     generated tables in mobile/engine/gen (mobile/tools/gen_engine_tables.sh), Ableton Link and Signalsmith
+     Stretch in mobile/third_party (mobile/tools/get_deps.sh). The CI does all three:
      .github/workflows/mobile.yml. The header paths are relative to the exporter folder, Builds/Android
      (Projucer moves them one level for its app/CMakeLists.txt) -->
 <JUCERPROJECT id="Sl00pT" name="SloopTouch" projectType="guiapp" version="0.1.0" companyName="SLOOP"
               bundleIdentifier="org.sloop.touch" cppLanguageStandard="17" jucerFormatVersion="1"
               displaySplashScreen="0" reportAppUsage="0"
-              defines="JUCE_WEB_BROWSER=0&#10;JUCE_USE_CURL=0&#10;LINK_PLATFORM_LINUX=1&#10;ASIO_STANDALONE=1&#10;ASIO_NO_TYPEID=1&#10;ASIO_VERSION_NAMESPACE=sloop_link_asio">
+              defines="JUCE_WEB_BROWSER=0&#10;JUCE_USE_CURL=0&#10;JUCE_USE_MP3AUDIOFORMAT=1&#10;LINK_PLATFORM_LINUX=1&#10;ASIO_STANDALONE=1&#10;ASIO_NO_TYPEID=1&#10;ASIO_VERSION_NAMESPACE=sloop_link_asio">
   <MAINGROUP id="Gr00p0" name="SloopTouch">
     <GROUP id="Gr00p1" name="Source">
       <FILE id="Fi0001" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
@@ -31,6 +31,12 @@
       <FILE id="Fi0064" name="Midi.cpp" compile="1" resource="0" file="Source/Midi.cpp"/>
       <FILE id="Fi0065" name="LinkSync.h" compile="0" resource="0" file="Source/LinkSync.h"/>
       <FILE id="Fi0066" name="LinkSync.cpp" compile="1" resource="0" file="Source/LinkSync.cpp"/>
+      <FILE id="Fi0067" name="Samples.h" compile="0" resource="0" file="Source/Samples.h"/>
+      <FILE id="Fi0068" name="Samples.cpp" compile="1" resource="0" file="Source/Samples.cpp"/>
+      <FILE id="Fi0069" name="ClipPlayer.h" compile="0" resource="0" file="Source/ClipPlayer.h"/>
+      <FILE id="Fi0070" name="ClipPlayer.cpp" compile="1" resource="0" file="Source/ClipPlayer.cpp"/>
+      <FILE id="Fi0071" name="AudioEditor.h" compile="0" resource="0" file="Source/AudioEditor.h"/>
+      <FILE id="Fi0072" name="AudioEditor.cpp" compile="1" resource="0" file="Source/AudioEditor.cpp"/>
       <FILE id="Fi0009" name="Model.h" compile="0" resource="0" file="Source/Model.h"/>
       <FILE id="Fi0010" name="Theme.h" compile="0" resource="0" file="Source/Theme.h"/>
     </GROUP>
@@ -107,9 +113,9 @@
                    extraCompilerFlags="-fwrapv -fno-strict-aliasing">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" optimisation="1"
-                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src&#10;../../../third_party/plaits&#10;../../../third_party/obxd/Engine&#10;../../../third_party/link/include&#10;../../../third_party/link/modules/asio-standalone/asio/include"/>
+                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src&#10;../../../third_party/plaits&#10;../../../third_party/obxd/Engine&#10;../../../third_party/link/include&#10;../../../third_party/link/modules/asio-standalone/asio/include&#10;../../../third_party/signalsmith-stretch/include&#10;../../../third_party/signalsmith-linear/include"/>
         <CONFIGURATION isDebug="0" name="Release" optimisation="3"
-                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src&#10;../../../third_party/plaits&#10;../../../third_party/obxd/Engine&#10;../../../third_party/link/include&#10;../../../third_party/link/modules/asio-standalone/asio/include"/>
+                       headerPath="../../../engine&#10;../../../engine/gen&#10;../../../../firmware/src&#10;../../../third_party/plaits&#10;../../../third_party/obxd/Engine&#10;../../../third_party/link/include&#10;../../../third_party/link/modules/asio-standalone/asio/include&#10;../../../third_party/signalsmith-stretch/include&#10;../../../third_party/signalsmith-linear/include"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path="JUCE/modules"/>

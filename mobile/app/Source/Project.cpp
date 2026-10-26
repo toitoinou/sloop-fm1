@@ -131,6 +131,27 @@ juce::String Project::toJson() const
         tracks.add (juce::var (tr));
     }
     root->setProperty ("tracks", tracks);
+    // the audio track: its mix, its clips (a sample of the app's samples folder each: the file is not in here)
+    auto* au = new juce::DynamicObject();
+    au->setProperty ("level", audioLevel);
+    au->setProperty ("pan", audioPan);
+    au->setProperty ("mute", audioMuted);
+    juce::Array<juce::var> aclips;
+    for (auto& c : session.audio)
+    {
+        if (! c) { aclips.add (juce::var()); continue; }
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("name", c->name);
+        o->setProperty ("file", c->file);
+        o->setProperty ("start", (juce::int64) c->start);
+        o->setProperty ("end", (juce::int64) c->end);
+        o->setProperty ("bpm", c->bpm);
+        o->setProperty ("stretch", c->stretch);
+        o->setProperty ("gain", c->gain);
+        aclips.add (juce::var (o));
+    }
+    au->setProperty ("clips", aclips);
+    root->setProperty ("audio", juce::var (au));
     return juce::JSON::toString (juce::var (root), true);
 }
 
@@ -153,6 +174,9 @@ std::optional<Project> Project::fromJson (const juce::String& text)
     int scenes = 1;
     for (auto& tr : *tracks)
         if (auto* clips = tr["clips"].getArray()) scenes = juce::jmax (scenes, clips->size());
+    const auto au = root["audio"];
+    auto* aclips = au["clips"].getArray();
+    if (aclips != nullptr) scenes = juce::jmax (scenes, aclips->size());
     for (int i = 0; i < scenes; ++i) p.session.addScene();
     for (int t = 0; t < tracks->size(); ++t)            // (an older project: four tracks, the others as new)
     {
@@ -168,6 +192,27 @@ std::optional<Project> Project::fromJson (const juce::String& text)
         if (auto* clips = tr["clips"].getArray())
             for (int s = 0; s < clips->size(); ++s) p.session.at (t, s) = readClip ((*clips)[s], t, format);
     }
+    if (au.isObject())
+    {
+        p.audioLevel = juce::jlimit (0, 127, (int) au.getProperty ("level", 90));
+        p.audioPan = juce::jlimit (-64, 63, (int) au.getProperty ("pan", 0));
+        p.audioMuted = au.getProperty ("mute", false);
+    }
+    if (aclips != nullptr)
+        for (int s = 0; s < aclips->size(); ++s)
+        {
+            const auto& v = (*aclips)[s];
+            if (! v.isObject() || v["file"].toString().isEmpty()) continue;
+            AudioClip c;
+            c.name = v["name"].toString();
+            c.file = v["file"].toString();
+            c.start = juce::jmax ((int64_t) 0, (int64_t) (juce::int64) v.getProperty ("start", 0));
+            c.end = juce::jmax (c.start + 1, (int64_t) (juce::int64) v.getProperty ("end", (juce::int64) (c.start + 1)));
+            c.bpm = juce::jlimit ((double) kMinBpm, (double) kMaxBpm, (double) v.getProperty ("bpm", 120.0));
+            c.stretch = v.getProperty ("stretch", true);
+            c.gain = juce::jlimit (0.0f, 4.0f, (float) v.getProperty ("gain", 1.0f));
+            p.session.audio[(size_t) s] = c;
+        }
     return p;
 }
 

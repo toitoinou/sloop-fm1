@@ -4,8 +4,10 @@
 #pragma once
 #include "AudioEngine.h"
 #include "Project.h"
+#include "Samples.h"
 #include "sloop_engine.h"
 #include <functional>
+#include <set>
 
 namespace sloop
 {
@@ -51,6 +53,11 @@ public:
     double seenLinkTempo = 0;
     bool seenLinkPlaying = false;
     int linkPeers = -1;                                  // the other Link apps (-1: Link off)
+    SampleBank samples;                                  // the audio clips' samples
+    int audioRow = -1;                                   // the audio track's row playing (or waiting), -1 none
+    int audioQueued = kNone;                             // its row waiting for the bar, kStop, kNone
+    int audioLevel = 90, audioPan = 0;                   // its fader (0..127) and pan (-64..63)
+    bool audioMuted = false;
     bool playing = false;
     bool recording = false;
     struct Pending { int track, slot, step; };
@@ -84,7 +91,10 @@ public:
         playing = ! playing;
         audio.play (playing, playing && recording && prefs.countIn);   // (recording: a bar of clicks first)
         if (! playing)
+        {
             for (int t = 0; t < kTracks; ++t) queued[(size_t) t] = kNone;
+            audioQueued = kNone;
+        }
         notify();
     }
     void setBpm (int b) { bpm = juce::jlimit (kMinBpm, kMaxBpm, b); audio.setBpm (bpm); notify(); }
@@ -132,6 +142,9 @@ public:
         p.sounds = sounds;
         p.params = params;
         p.hasParams.fill (true);
+        p.audioLevel = audioLevel;
+        p.audioPan = audioPan;
+        p.audioMuted = audioMuted;
         return p;
     }
     void load (const Project& p)
@@ -179,6 +192,26 @@ public:
             if (session.at (t, 0)) playlist[(size_t) t] = { 0 };
             sendPlaylist (t, AudioEngine::When::now);
         }
+        session.audio.resize ((size_t) session.scenes());
+        std::set<juce::String> files;
+        for (auto& c : session.audio) if (c) files.insert (c->file);
+        samples.keepOnly (files);
+        audioQueued = kNone;
+        audioRow = -1;
+        audio.setAudioClip (AudioEngine::When::now, -1, {});
+        if (session.audio[0]) launchAudio (0);
+        setAudioMix (p.audioLevel, p.audioPan, p.audioMuted);
+        notify();
+    }
+    void setAudioMix (int level, int pan, bool mute)
+    {
+        audioLevel = juce::jlimit (0, 127, level);
+        audioPan = juce::jlimit (-64, 63, pan);
+        audioMuted = mute;
+        const float f = (float) audioLevel / 127.0f;
+        audio.audioLevel = f * f;
+        audio.audioPan = (float) audioPan / 64.0f;
+        audio.audioMute = audioMuted;
         notify();
     }
 
@@ -213,9 +246,110 @@ public:
             if (session.at (t, r)) launch (t, r);
             else stopTrack (t);
         }
+        if (session.audio[(size_t) r]) launchAudio (r);
+        else stopAudio();
         notify();
     }
-    void stopAll() { for (int t = 0; t < kTracks; ++t) stopTrack (t); notify(); }
+    void stopAll() { for (int t = 0; t < kTracks; ++t) stopTrack (t); stopAudio(); notify(); }
+
+    // ---- the audio track (samples): a clip of a row plays alone, launched as the other tracks' clips
+    ClipPlayer::Clip playerClip (const AudioClip& c)
+    {
+        ClipPlayer::Clip p;
+        const auto data = samples.get (c.file);
+        if (data == nullptr) return p;
+        const int64_t n = data->buffer.getNumSamples();
+        p.sample = data.get();                           // (the bank keeps it: the session holds its name)
+        p.start = juce::jlimit ((int64_t) 0, n - 1, c.start);
+        p.end = juce::jlimit (p.start + 1, n, c.end);
+        p.beats = c.beats();
+        p.stretch = c.stretch;
+        p.gain = c.gain;
+        return p;
+    }
+    void launchAudio (int s)
+    {
+        if (s < 0 || s >= session.scenes() || ! session.audio[(size_t) s]) return;
+        audioRow = s;
+        audioQueued = playing ? s : kNone;
+        audio.setAudioClip (playing ? AudioEngine::When::nextBar : AudioEngine::When::now, s, playerClip (*session.audio[(size_t) s]));
+        notify();
+    }
+    void stopAudio()
+    {
+        audioRow = -1;
+        audioQueued = playing ? kStop : kNone;
+        audio.setAudioClip (playing ? AudioEngine::When::nextBar : AudioEngine::When::now, -1, {});
+    }
+    void audioEdited (int s)                             // the clip as it is now, wherever it plays or waits
+    {
+        if (s >= 0 && s < session.scenes() && session.audio[(size_t) s])
+            audio.setAudioClip (AudioEngine::When::update, s, playerClip (*session.audio[(size_t) s]));
+        notify();
+    }
+    void setAudioClip (int s, const AudioClip& c)        // an edit (the clip editor: a drag is one step back)
+    {
+        if (s < 0 || s >= session.scenes()) return;
+        remember ("audio");
+        session.audio[(size_t) s] = c;
+        audioEdited (s);
+    }
+    void deleteAudio (int s)
+    {
+        if (s < 0 || s >= session.scenes() || ! session.audio[(size_t) s]) return;
+        remember ("clip");
+        session.audio[(size_t) s].reset();
+        if (audioRow == s) stopAudio();
+        notify();
+    }
+    void duplicateAudio (int s)
+    {
+        if (s < 0 || s >= session.scenes() || ! session.audio[(size_t) s]) return;
+        remember ("clip");
+        int r = s + 1;
+        while (r < session.scenes() && session.audio[(size_t) r]) ++r;
+        if (r == session.scenes()) session.addScene();
+        session.audio[(size_t) r] = session.audio[(size_t) s];
+        session.audio[(size_t) r]->name << " bis";
+        notify();
+    }
+    // a sound file (a file, a content:// URL from Android's picker, a recording of the app) as a new clip on row s:
+    // its tempo from its name ("... 92bpm.wav") or else the nearest to the song's that makes it 1..32 bars
+    bool importAudio (int s, const juce::URL& from, juce::String& error)
+    {
+        const auto file = samples.import (from, error);
+        if (file.isEmpty()) return false;
+        const auto data = samples.get (file);
+        AudioClip c;
+        c.file = file;
+        c.name = file.upToLastOccurrenceOf (".", false, false);
+        c.end = data->buffer.getNumSamples();
+        c.bpm = guessTempo (juce::URL::removeEscapeChars (from.getFileName()), c.seconds(), bpm);
+        while (s >= session.scenes()) session.addScene();
+        remember ("clip");
+        session.audio[(size_t) s] = c;
+        notify();
+        return true;
+    }
+    static double guessTempo (const juce::String& name, double seconds, double tempo)
+    {
+        const auto lower = name.toLowerCase();
+        for (int i = lower.indexOf ("bpm"); i > 0; i = lower.indexOf (i + 1, "bpm"))
+        {
+            int k = i;
+            while (k > 0 && lower[k - 1] == ' ') --k;
+            int j = k;
+            while (j > 0 && juce::CharacterFunctions::isDigit (lower[j - 1])) --j;
+            if (const int v = lower.substring (j, k).getIntValue(); j < k && v >= kMinBpm && v <= kMaxBpm) return v;
+        }
+        double best = tempo, err = 1.0e9;
+        for (int bars = 1; bars <= 32; bars *= 2)
+        {
+            const double t = bars * 4 * 60.0 / seconds;
+            if (t >= 70.0 && t <= 180.0 && std::abs (t - tempo) < err) { err = std::abs (t - tempo); best = t; }
+        }
+        return best;
+    }
     // the audio thread has taken a queued clip: no more blinking
     void poll()
     {
@@ -239,7 +373,7 @@ public:
                 if (lp != playing)
                 {
                     playing = lp;
-                    if (! playing) queued.fill (kNone);
+                    if (! playing) { queued.fill (kNone); audioQueued = kNone; }
                     any = true;
                 }
             }
@@ -256,6 +390,11 @@ public:
             auto q = queued[(size_t) t];
             const int now = audio.playingSlot[t].load();
             if (q != kNone && (q == now || (q == kStop && now < 0))) { queued[(size_t) t] = kNone; any = true; }
+        }
+        if (const int now = audio.audioSlot.load(); audioQueued != kNone && (audioQueued == now || (audioQueued == kStop && now < 0)))
+        {
+            audioQueued = kNone;
+            any = true;
         }
         if (any) notify();
     }
@@ -303,6 +442,12 @@ public:
             std::optional<Clip> c = from >= 0 && from < (int) col.size() ? col[(size_t) from] : std::nullopt;
             col.insert (col.begin() + r + 1, c);
         }
+        {
+            const int from = capture ? audio.audioSlot.load() : r;
+            auto& col = session.audio;
+            std::optional<AudioClip> c = from >= 0 && from < (int) col.size() ? col[(size_t) from] : std::nullopt;
+            col.insert (col.begin() + r + 1, c);
+        }
         shiftRows (r + 1, 1);
         notify();
     }
@@ -316,6 +461,8 @@ public:
             if (std::find (pl.begin(), pl.end(), r) != pl.end()) stopTrack (t);
             session.cols[(size_t) t].erase (session.cols[(size_t) t].begin() + r);
         }
+        if (audioRow == r) stopAudio();
+        session.audio.erase (session.audio.begin() + r);
         shiftRows (r + 1, -1);
         notify();
     }
@@ -378,7 +525,7 @@ public:
         lastEdit = t;
         lastKind = kind;
         if (same) return;
-        undoStack.push_back ({ session, editSlot, playlist });
+        undoStack.push_back ({ session, editSlot, playlist, audioRow });
         if (undoStack.size() > 40) undoStack.erase (undoStack.begin());
         redoStack.clear();
     }
@@ -774,14 +921,14 @@ public:
     bool lockedSinceHold = false;                        // a knob turned while steps were held
 
 private:
-    struct UndoState { Session session; std::array<int, kTracks> editSlot; std::array<std::vector<int>, kTracks> playlist; };
+    struct UndoState { Session session; std::array<int, kTracks> editSlot; std::array<std::vector<int>, kTracks> playlist; int audioRow; };
     std::vector<UndoState> undoStack, redoStack;
     juce::String lastKind;
     double lastEdit = 0;
     void travel (std::vector<UndoState>& from, std::vector<UndoState>& to)
     {
         if (from.empty()) return;
-        to.push_back ({ session, editSlot, playlist });
+        to.push_back ({ session, editSlot, playlist, audioRow });
         const auto u = std::move (from.back());
         from.pop_back();
         lastKind = {};
@@ -804,6 +951,14 @@ private:
             }
             else sendPlaylist (t, AudioEngine::When::update);
         }
+        const int row = u.audioRow >= 0 && u.audioRow < session.scenes() && session.audio[(size_t) u.audioRow] ? u.audioRow : -1;
+        if (row != audioRow)
+        {
+            audioQueued = kNone;
+            if (row < 0) { audioRow = -1; audio.setAudioClip (AudioEngine::When::now, -1, {}); }
+            else { audioRow = row; audio.setAudioClip (AudioEngine::When::now, row, playerClip (*session.audio[(size_t) row])); }
+        }
+        else if (row >= 0) audioEdited (row);
         notify();
     }
     void readParams()
@@ -827,6 +982,8 @@ private:
             for (auto& s : playlist[(size_t) t]) if (s >= from) s += d;
             if (queued[(size_t) t] >= from) queued[(size_t) t] += d;
         }
+        if (audioRow >= from) audioRow += d;
+        if (audioQueued >= from) audioQueued += d;
         // the audio thread reports rows: keep it in step with the new numbering
         audio.renumber (from, d);
     }

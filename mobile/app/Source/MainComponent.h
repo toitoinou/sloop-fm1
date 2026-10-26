@@ -20,6 +20,7 @@ public:
         if (name.startsWith ("sound")) { ctl.select (name.getTrailingIntValue() % kTracks); openSound(); return; }
         if (name == "project") { openProject(); return; }
         if (name == "settings") { openSettings(); return; }
+        if (name == "audio") { snapshotAudioClip(); openAudioEditor (0); return; }
         if (name.startsWith ("keys")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
         if (name.startsWith ("notes")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::grid); return; }
         if (name.startsWith ("track")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
@@ -35,6 +36,10 @@ private:
     void openSound();
     void openProject();
     void openSettings();
+    void openAudioEditor (int row);
+    void importAudio (int row);                      // a sound into the audio track's row: a file, a recording
+    void importAudioFrom (int row, const juce::URL&);
+    void snapshotAudioClip();                        // (--snapshot ... audio: a made-up loop on the audio track's row 1)
     void showSheet (std::unique_ptr<juce::Component>);
     void tap();
     void setupAudio();
@@ -66,6 +71,6 @@ private:
     juce::String lastAutosave;
     void shareRecording (const juce::File&);
     juce::ScopedMessageBox sharing;
-    std::unique_ptr<juce::FileChooser> saving;
+    std::unique_ptr<juce::FileChooser> saving, importing;
 };
 } // namespace sloop

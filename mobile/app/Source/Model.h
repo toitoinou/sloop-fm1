@@ -46,6 +46,23 @@ inline const char* trackName (int t)
     return names[(size_t) t % kTracks];
 }
 inline bool isDrum (int t) { return t == 0; }
+constexpr int kAudio = kTracks;     // the audio track (samples played by the app, not by SLOOP): the session's last column
+
+// An audio clip: a sample (a file of the app's samples folder, at the engine's rate), played from `start` to `end`
+// (the file is untouched), looped. Its own tempo says how many beats that is (rounded: at least one); it plays
+// that many beats of the song, at the song's tempo: stretched (its pitch kept) or sped up like a record
+struct AudioClip
+{
+    juce::String name, file;
+    int64_t start = 0, end = 0;     // frames of the file
+    double bpm = 120.0;             // its tempo, by ear (tap) or from its length in beats
+    bool stretch = true;
+    float gain = 1.0f;
+    static constexpr double rate = 44100.0;   // (the samples are kept at the engine's rate)
+    double seconds() const { return (double) juce::jmax ((int64_t) 1, end - start) / rate; }
+    double lengthBeats() const { return seconds() * bpm / 60.0; }        // (what the start and end hold)
+    int beats() const { return juce::jmax (1, juce::roundToInt (lengthBeats())); }   // what it plays
+};
 
 // A step's condition beyond its probability (Elektron / OP-Z style); the app resolves them
 enum class Cond : uint8_t { always, oneOfTwo, twoOfTwo, oneOfFour, fill, notFill };
@@ -186,11 +203,12 @@ inline juce::String noteName (int midi) { return pitchName (midi) + juce::String
 struct Session
 {
     std::array<std::vector<std::optional<Clip>>, kTracks> cols;
+    std::vector<std::optional<AudioClip>> audio;     // the audio track's clips, a row each
 
     int scenes() const { return (int) cols[0].size(); }
     std::optional<Clip>& at (int t, int s) { return cols[(size_t) t][(size_t) s]; }
     const std::optional<Clip>& at (int t, int s) const { return cols[(size_t) t][(size_t) s]; }
-    void addScene() { for (auto& c : cols) c.emplace_back(); }
+    void addScene() { for (auto& c : cols) c.emplace_back(); audio.emplace_back(); }
     static Clip newClip (int t, juce::String name)
     {
         Clip c { std::move (name), {} };

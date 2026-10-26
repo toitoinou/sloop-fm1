@@ -7,6 +7,7 @@
 // steps), from whatever clip is due there. So a clip can have any length (1..64), a chain can mix lengths, a clip
 // launched while playing starts on the next bar, and an edit is heard at once.
 #pragma once
+#include "ClipPlayer.h"
 #include "LinkSync.h"
 #include "Model.h"
 #include <atomic>
@@ -45,7 +46,18 @@ public:
     // new data for the clips of these rows, wherever they are (playing, or waiting for the bar)
     void setPlaylist (int track, When when, const std::vector<std::pair<int, const ClipData*>>& clips);
     void renumber (int from, int delta);               // the session's rows from `from` on moved by delta
-    void setSolo (unsigned mask);                       // bit t: track t soloed (0: none)
+    void setSolo (unsigned mask);                       // bit t: track t soloed (0: none); bit kAudio: the audio track
+    // the audio track: the clip of a row from `when` (row -1: it stops; update: the same clip edited); its level
+    // (0..1, a fader's square), pan (-1..1) and mute are read by the audio thread as they are
+    void setAudioClip (When when, int row, const ClipPlayer::Clip& clip);
+    std::atomic<float> audioLevel { 0.6f }, audioPan { 0.0f };
+    std::atomic<bool> audioMute { false };
+    std::atomic<int> audioSlot { -1 };                  // the row it plays
+    std::atomic<float> audioProgress { 0.0f };          // where in its loop, 0..1
+    std::atomic<int> audioPeak { 0 };                   // (Q15, as the tracks' meters)
+    // listening to a clip alone, at its own tempo (the clip editor): row -1 stops it
+    void preview (const ClipPlayer::Clip& clip, bool on);
+    std::atomic<float> previewProgress { -1.0f };       // -1: not playing
     void setGlobal (int id, int value);                 // a global setting (sloop_engine.h SE_G_*)
     std::atomic<float> masterGain { 1.0f };             // the master volume, at the output
     // recording the output (what is heard: the song, the pads, the mix moves) into a WAV, 24-bit stereo, written on
@@ -85,7 +97,7 @@ public:
     void audioDeviceStopped() override {}
 
 private:
-    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber, repeat, solo, global, link };
+    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber, repeat, solo, global, link, audio, preview };
     struct Command
     {
         Type type;
@@ -95,6 +107,7 @@ private:
         int slots[kChainMax] {};
         ClipData clips[kChainMax];
         std::array<int, kParamSlots> values {};
+        ClipPlayer::Clip audio;
     };
     void post (Command&& c);
     void apply (Command& c);
@@ -125,7 +138,7 @@ private:
     void stopTransport();
     bool stepPlays (uint32_t seed, int passes, const StepData& x, int lane, int step) const;
 
-    juce::AbstractFifo fifo { 32 };
+    juce::AbstractFifo fifo { 64 };                      // (a project loaded: a few dozen commands at once)
     std::vector<Command> queue;
     std::array<TrackState, kTracks> tracks;
     bool fill = false;
@@ -144,6 +157,19 @@ private:
     double linkBeat = 0, linkOrigin = 0, seenTempo = 0;   // the beats the song has moved since PLAY; where it began
     bool seenPlaying = false;
     void followLink (int64_t start, int64_t end, int frames);
+    double linkMoved = 0;                              // the beats the song moves in this block (Link)
+
+    // the audio track: the song's beat (as the engine's clock counts it), the clip playing, the one waiting
+    double songBeat = 0;
+    ClipPlayer player, previewPlayer;
+    ClipPlayer::Clip audioNow, audioNext;
+    int audioRow = -1, audioNextRow = -1;
+    bool audioPending = false;
+    double audioAt = 0;
+    bool audioSolo = false, engineSilent = false, soloAny = false;
+    double previewBeat = 0;
+    std::array<float, 4096> mixL {}, mixR {};
+    void renderAudioTrack (float* l, float* r, int frames, double beats);
     bool countingIn = false;
     double countFrames = 0;
     std::array<int, kTracks> framesInStep {};

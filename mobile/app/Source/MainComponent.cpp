@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "MainComponent.h"
+#include "AudioEditor.h"
 #include "ProjectSheet.h"
 
 namespace sloop
@@ -28,6 +29,8 @@ MainComponent::MainComponent()
     tabPads.onClick = [this] { showTab (Tab::pads); };
     tabMix.onClick = [this] { showTab (Tab::mix); };
     knobs.onSound = [this] { openSound(); };
+    session.sessionGrid().onAudioEdit = [this] (int r) { openAudioEditor (r); };
+    session.sessionGrid().onAudioImport = [this] (int r) { importAudio (r); };
     projectButton.onClick = [this] { openProject(); };
     ctl.changed = [this] { refresh(); };
     showTab (Tab::session);
@@ -203,6 +206,65 @@ void MainComponent::openSettings()
         juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
     }, [this] { return audioText(); }, [this] { nextBufferSize(); },
        [this] { const auto names = midi.inputNames(); return names.isEmpty() ? juce::String::fromUTF8 ("Aucune entrée MIDI") : names.joinIntoString (", "); }));
+}
+void MainComponent::openAudioEditor (int row)
+{
+    showSheet (std::make_unique<AudioEditor> (ctl, row, [this]
+    {
+        juce::MessageManager::callAsync ([this] { sheet.reset(); refresh(); });
+    }));
+}
+void MainComponent::importAudio (int row)
+{
+    juce::PopupMenu m, recent;
+    const auto recordings = SampleBank::recordings();
+    for (int i = 0; i < juce::jmin (20, recordings.size()); ++i) recent.addItem (100 + i, recordings[i].getFileNameWithoutExtension());
+    m.addSectionHeader (juce::String::fromUTF8 ("Un son sur la piste audio"));
+    m.addItem (1, juce::String::fromUTF8 ("Un fichier… (WAV, AIFF, FLAC, Ogg, MP3)"));
+    m.addSubMenu (juce::String::fromUTF8 ("Un enregistrement de l'app"), recent, ! recordings.isEmpty());
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&session),
+                     [this, row, recordings] (int r)
+                     {
+                         if (r >= 100) { importAudioFrom (row, juce::URL (recordings[r - 100])); return; }
+                         if (r != 1) return;
+                         importing = std::make_unique<juce::FileChooser> (juce::String::fromUTF8 ("Importer un son"),
+                             juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
+                         importing->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                                 [this, row] (const juce::FileChooser& fc)
+                                                 {
+                                                     if (auto url = fc.getURLResult(); ! url.isEmpty()) importAudioFrom (row, url);
+                                                 });
+                     });
+}
+void MainComponent::importAudioFrom (int row, const juce::URL& url)
+{
+    juce::String error;
+    if (ctl.importAudio (row, url, error)) { openAudioEditor (row); return; }
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, juce::String::fromUTF8 ("Import"), error);
+}
+void MainComponent::snapshotAudioClip()
+{
+    // two bars at 96 BPM: a thump on each beat, a hiss between, a little silence after (the end to trim)
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Loop 96bpm.wav");
+    const int beat = (int) (AudioClip::rate * 60.0 / 96.0);
+    juce::AudioBuffer<float> b (2, beat * 8 + beat / 2);
+    b.clear();
+    juce::Random rnd (7);
+    for (int k = 0; k < 8; ++k)
+        for (int i = 0; i < beat; ++i)
+        {
+            const float t = (float) i / (float) AudioClip::rate;
+            float v = 0.9f * std::sin (6.2831853f * 55.0f * t) * std::exp (-t * 18.0f);
+            if (i > beat / 2) v += 0.25f * (rnd.nextFloat() * 2.0f - 1.0f) * std::exp (-(float) (i - beat / 2) / 2000.0f);
+            b.setSample (0, k * beat + i, v);
+            b.setSample (1, k * beat + i, v);
+        }
+    juce::WavAudioFormat wav;
+    file.deleteFile();
+    if (std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (file.createOutputStream().release(), AudioClip::rate, 2, 24, {}, 0)); w != nullptr)
+        w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+    juce::String error;
+    ctl.importAudio (0, juce::URL (file), error);
 }
 void MainComponent::openSound()
 {

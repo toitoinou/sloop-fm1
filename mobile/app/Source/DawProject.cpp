@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "DawProject.h"
+#include "Samples.h"
 #include "Theme.h"
 #include "sloop_engine.h"
 
@@ -63,6 +64,38 @@ void addNotes (juce::XmlElement& notes, const ClipData& d, int track, const Key&
 }
 
 juce::String colourOf (int t) { return "#" + theme::track (t).toDisplayString (false).toLowerCase(); }
+
+bool hasAudio (const Project& p)
+{
+    return std::any_of (p.session.audio.begin(), p.session.audio.end(), [] (const auto& c) { return c.has_value(); });
+}
+
+// an audio clip's content: its sample (audio/<file> in the zip), its start and end on its beats (the DAW stretches it
+// to the song's tempo as the app does)
+void addWarps (juce::XmlElement& clip, const AudioClip& c, Ids& ids)
+{
+    auto* warps = add (clip, "Warps", &ids);
+    warps->setAttribute ("timeUnit", "beats");
+    warps->setAttribute ("contentTimeUnit", "seconds");
+    auto* audio = add (*warps, "Audio", &ids);
+    audio->setAttribute ("algorithm", c.stretch ? "stretch" : "repitch");
+    audio->setAttribute ("channels", 2);
+    audio->setAttribute ("sampleRate", (int) AudioClip::rate);
+    const auto file = SampleBank::folder().getChildFile (c.file);
+    double seconds = (double) c.end / AudioClip::rate;
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    if (std::unique_ptr<juce::AudioFormatReader> r (formats.createReaderFor (file)); r != nullptr)
+        seconds = (double) r->lengthInSamples / r->sampleRate;
+    audio->setAttribute ("duration", num (seconds));
+    add (*audio, "File")->setAttribute ("path", "audio/" + c.file);
+    auto* w0 = add (*warps, "Warp");
+    w0->setAttribute ("time", "0");
+    w0->setAttribute ("contentTime", num ((double) c.start / AudioClip::rate));
+    auto* w1 = add (*warps, "Warp");
+    w1->setAttribute ("time", num (c.beats()));
+    w1->setAttribute ("contentTime", num ((double) c.end / AudioClip::rate));
+}
 } // namespace
 
 juce::String projectXml (const Project& p)
@@ -99,6 +132,18 @@ juce::String projectXml (const Project& p)
         tr->setAttribute ("loaded", "true");
         channels[(size_t) t] = add (*tr, "Channel", &ids);
     }
+    juce::String audioTrackId;
+    juce::XmlElement* audioChannel = nullptr;
+    if (hasAudio (p))                                    // (the audio track: only when it has clips)
+    {
+        auto* tr = add (*structure, "Track", &ids);
+        audioTrackId = tr->getStringAttribute ("id");
+        tr->setAttribute ("name", "Audio");
+        tr->setAttribute ("color", colourOf (kAudio));
+        tr->setAttribute ("contentType", "audio");
+        tr->setAttribute ("loaded", "true");
+        audioChannel = add (*tr, "Channel", &ids);
+    }
     auto* masterTrack = add (*structure, "Track", &ids);
     masterTrack->setAttribute ("name", "Master");
     masterTrack->setAttribute ("contentType", "audio notes");
@@ -133,6 +178,11 @@ juce::String projectXml (const Project& p)
         mixer (*channels[(size_t) t], "regular", p.hasParams[(size_t) t] && p.params[(size_t) t][(size_t) SE_P_MUTE] != 0,
                juce::jlimit (0.0, 1.0, 0.5 + pan / 128.0));
     }
+    if (audioChannel != nullptr)
+    {
+        audioChannel->setAttribute ("destination", masterId);
+        mixer (*audioChannel, "regular", p.audioMuted, juce::jlimit (0.0, 1.0, 0.5 + p.audioPan / 128.0));
+    }
     mixer (*master, "master", false, 0.5);
 
     // the arrangement: the scenes in order, each as long as its longest clip; the shorter clips loop in it
@@ -146,14 +196,34 @@ juce::String projectXml (const Project& p)
         trackLane->setAttribute ("track", trackIds[(size_t) t]);
         clipsOf[(size_t) t] = add (*trackLane, "Clips", &ids);
     }
+    juce::XmlElement* audioClips = nullptr;
+    if (audioChannel != nullptr)
+    {
+        auto* trackLane = add (*lanes, "Lanes", &ids);
+        trackLane->setAttribute ("track", audioTrackId);
+        audioClips = add (*trackLane, "Clips", &ids);
+    }
     double at = 0;
     for (int r = 0; r < p.session.scenes(); ++r)
     {
         int steps = 0;
         for (int t = 0; t < kTracks; ++t)
             if (const auto& c = p.session.at (t, r)) steps = juce::jmax (steps, (int) c->data.length);
+        const auto& ac = p.session.audio[(size_t) r];
+        if (ac) steps = juce::jmax (steps, (int) (ac->beats() / kStepBeats));
         if (steps == 0) continue;                    // (an empty row: nothing to play)
         const double beats = steps * kStepBeats;
+        if (ac && audioClips != nullptr)
+        {
+            auto* clip = add (*audioClips, "Clip");
+            clip->setAttribute ("name", ac->name);
+            clip->setAttribute ("time", num (at));
+            clip->setAttribute ("duration", num (beats));
+            clip->setAttribute ("playStart", "0");
+            clip->setAttribute ("loopStart", "0");
+            clip->setAttribute ("loopEnd", num (ac->beats()));
+            addWarps (*clip, *ac, ids);
+        }
         for (int t = 0; t < kTracks; ++t)
         {
             const auto& c = p.session.at (t, r);
@@ -202,6 +272,24 @@ juce::String projectXml (const Project& p)
             clip->setAttribute ("loopEnd", num (len));
             addNotes (*add (*clip, "Notes", &ids), c->data, t, p.key, 0.0);
         }
+        if (audioChannel != nullptr)
+        {
+            auto* slot = add (*row, "ClipSlot", &ids);
+            slot->setAttribute ("track", audioTrackId);
+            slot->setAttribute ("hasStop", "true");
+            if (const auto& ac = p.session.audio[(size_t) r])
+            {
+                auto* clip = add (*slot, "Clip");
+                clip->setAttribute ("name", ac->name);
+                clip->setAttribute ("color", colourOf (kAudio));
+                clip->setAttribute ("time", "0");
+                clip->setAttribute ("duration", num (ac->beats()));
+                clip->setAttribute ("playStart", "0");
+                clip->setAttribute ("loopStart", "0");
+                clip->setAttribute ("loopEnd", num (ac->beats()));
+                addWarps (*clip, *ac, ids);
+            }
+        }
     }
     return root.toString();
 }
@@ -226,6 +314,11 @@ juce::MemoryBlock zip (const Project& p)
     };
     entry (projectXml (p), "project.xml");
     entry (metadataXml (p), "metadata.xml");
+    std::set<juce::String> files;                        // the audio clips' samples, once each
+    for (auto& c : p.session.audio) if (c) files.insert (c->file);
+    for (auto& f : files)
+        if (const auto file = SampleBank::folder().getChildFile (f); file.existsAsFile())
+            builder.addFile (file, 0, "audio/" + f);     // (WAV: stored, not compressed)
     juce::MemoryOutputStream out;
     builder.writeToStream (out, nullptr);
     return out.getMemoryBlock();

@@ -42,14 +42,16 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 
     static constexpr int rowH = 58, addH = 44;
+    static constexpr int kColumns = kTracks + 1;        // the tracks, then the audio track (kAudio)
     // the tracks in sight: all of them when they fit (a column 76 points or more), else a page of them
     int sceneW() const { return getWidth() < 420 ? 44 : 58; }
-    int shown() const { return juce::jlimit (4, kTracks, (getWidth() - sceneW()) / 78); }
+    int shown() const { return juce::jlimit (4, kColumns, (getWidth() - sceneW()) / 78); }
     int colW() const { return (getWidth() - sceneW() - shown() * theme::gap) / shown(); }
     int first = 0;                                   // the first track in sight
+    std::function<void (int)> onAudioEdit, onAudioImport;   // the audio track: a clip's editor; a sound into a row
     void page (int direction)
     {
-        first = juce::jlimit (0, juce::jmax (0, kTracks - shown()), first + direction * shown());
+        first = juce::jlimit (0, juce::jmax (0, kColumns - shown()), first + direction * shown());
         repaint();
     }
 
@@ -59,7 +61,9 @@ private:
     juce::Rectangle<int> sceneRect (int r) const;
     juce::Rectangle<int> addRect() const;
     void clipMenu (int t, int s);
+    void audioMenu (int s);
     void sceneMenu (int r);
+    void paintAudio (juce::Graphics&, int r, bool blink);
 
     Controller& ctl;
     std::function<void (int, int)> onEdit;
@@ -76,11 +80,12 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
+    SessionGrid& sessionGrid() { return grid; }
     void refresh()
     {
         grid.setSize (viewport.getMaximumVisibleWidth(), grid.wantedHeight());
         if (ctl.sel < grid.first || ctl.sel >= grid.first + grid.shown())   // (the selected track in sight)
-            grid.first = juce::jmin (kTracks - grid.shown(), ctl.sel / grid.shown() * grid.shown());
+            grid.first = juce::jmin (SessionGrid::kColumns - grid.shown(), ctl.sel / grid.shown() * grid.shown());
         grid.repaint();
         repaint();
     }
@@ -180,10 +185,11 @@ public:
 
 private:
     enum Part { name, mute, solo, pan, rev, dly, fader, pagePrev, pageNext, record, none };
-    struct Hit { int strip = -1; Part part = none; };   // strip kTracks: the master
+    static constexpr int kStrips = kTracks + 1, kMaster = kStrips;   // the tracks, the audio track (kAudio); the master
+    struct Hit { int strip = -1; Part part = none; };
     void timerCallback() override;
     int masterW() const { return juce::jmin (130, getWidth() / 4); }
-    int shown() const { return juce::jlimit (4, kTracks, (getWidth() - masterW()) / 70); }
+    int shown() const { return juce::jlimit (4, kStrips, (getWidth() - masterW()) / 70); }
     juce::Rectangle<int> stripRect (int strip) const;
     juce::Rectangle<int> partRect (int strip, Part) const;
     Hit hitAt (juce::Point<int>) const;
@@ -193,7 +199,7 @@ private:
     Controller& ctl;
     int first = 0;
     juce::File recording;
-    std::array<float, kTracks + 1> meter {};
+    std::array<float, kMaster + 1> meter {};
     struct Drag { Hit hit; float start = 0; int value0 = 0; };
     std::map<int, Drag> drags;
     std::map<int, double> lastTap;

@@ -47,8 +47,8 @@ jobs:
       - name: Engine tables
         run: mobile/tools/gen_engine_tables.sh
 
-      - name: Ableton Link
-        run: mobile/tools/get_link.sh
+      - name: The libraries fetched (Link, Signalsmith Stretch)
+        run: mobile/tools/get_deps.sh
 
       - name: Android Studio project (Projucer --resave)
         run: xvfb-run -a projucer/Projucer --resave mobile/app/SloopTouch.jucer
@@ -124,7 +124,8 @@ jobs:
           mkdir -p screenshots
           for spec in "phone-landscape-session 844x390 session" "phone-landscape-grid 844x390 grid" \
                       "phone-portrait-session 390x844 session" "tablet-session 1280x800 session" \
-                      "tablet-grid 1280x800 grid" "tablet-pads 1280x800 pads"; do
+                      "tablet-grid 1280x800 grid" "tablet-pads 1280x800 pads" \
+                      "tablet-mix 1280x800 mix" "phone-landscape-audio 844x390 audio" "tablet-audio 1280x800 audio"; do
             set -- $spec
             xvfb-run -a "$app" --snapshot "screenshots/$1.png" "$2" "$3"
           done
