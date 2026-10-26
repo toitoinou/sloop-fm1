@@ -89,6 +89,16 @@ void se_set_locks(int track, const se_lock_t *locks, int count);   /* replaces e
  * the steps just ahead of the playhead, and clears the ones behind it, while the track plays */
 void se_set_step_locks(int track, int step, const se_lock_t *locks, int count);
 
+/* the mix: solo (bit k = track k: only those heard; 0 none), a track's loudest output since the last call (and back
+ * to 0: the meters), the global settings (core.h G_*: the master bus, the drum track's level and sends) */
+enum { SE_G_DRLVL = 25, SE_G_DRREV = 26, SE_G_DUST = 27, SE_G_DUCK = 28, SE_G_FILT = 29, SE_G_DRDLY = 32, SE_G_RSIZE = 8,
+       SE_G_DTIME = 4, SE_G_DFDBK = 5 };
+void se_set_solo(unsigned mask);
+int se_track_peak(int track);
+void se_set_global(int id, int value);
+int se_global(int id);
+int se_global_describe(int id, int *min, int *max, int *def, const char **label);
+
 /* playing live */
 void se_drum_hit(int lane, int velocity);
 void se_note(int track, int note, int on);

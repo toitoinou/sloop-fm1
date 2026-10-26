@@ -22,11 +22,11 @@ public:
         if (name.startsWith ("keys")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
         if (name.startsWith ("notes")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::grid); return; }
         if (name.startsWith ("track")) { ctl.select (name.getTrailingIntValue() % kTracks); showTab (Tab::pads); return; }
-        showTab (name == "grid" ? Tab::grid : name == "pads" ? Tab::pads : Tab::session);
+        showTab (name == "grid" ? Tab::grid : name == "pads" ? Tab::pads : name == "mix" ? Tab::mix : Tab::session);
     }
 
 private:
-    enum class Tab { session, grid, pads };
+    enum class Tab { session, grid, pads, mix };
     void timerCallback() override;
     void showTab (Tab);
     void refresh();
@@ -51,10 +51,11 @@ private:
     HoldButton fillButton { "FILL" };
     BpmBox bpm { ctl };
     TrackRail rail { ctl };
-    juce::TextButton tabSession { "Session" }, tabGrid { "Grille" }, tabPads { "Pads" };
+    juce::TextButton tabSession { "Session" }, tabGrid { "Grille" }, tabPads { "Pads" }, tabMix { "Mix" };
     SessionView session { ctl, [this] (int t, int s) { ctl.editSlot[(size_t) t] = s; ctl.select (t); showTab (Tab::grid); } };
     StepGrid grid { ctl, [this] (int r, int s) { openSheet (r, s); } };
     PadsView pads { ctl };
+    MixerView mixer { ctl };
     KnobStrip knobs { ctl };
     std::unique_ptr<juce::Component> sheet;          // the step sheet or the sound sheet
     Tab tab = Tab::session;

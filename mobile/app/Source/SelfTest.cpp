@@ -339,6 +339,29 @@ int runSelfTest()
         ctl.setSound (2, 1, 0);
     }
 
+    // the mixer: solo leaves only the track soloed, the master volume scales the output
+    {
+        ctl.setSound (2, 0, 13);
+        ctl.audio.note (2, 60, true);
+        run (0.3);
+        audio.peak[2].exchange (0);
+        audio.peak[1].exchange (0);
+        ctl.toggleSolo (1);                              // T1 soloed (silent now): T2 is not heard
+        run (0.1);                                       // (its fade out)
+        audio.peak[2].exchange (0);
+        run (0.3);
+        const int soloed = audio.peak[2].exchange (0);
+        ctl.toggleSolo (1);
+        ctl.audio.note (2, 60, false);                   // (a note played again: heard)
+        ctl.audio.note (2, 60, true);
+        run (0.6);
+        const int back = audio.peak[2].exchange (0);
+        ctl.audio.note (2, 60, false);
+        if (! (soloed == 0 && back > 0)) std::printf ("      soloed %d back %d\n", soloed, back);
+        check (soloed == 0 && back > 0, "the mixer: a solo silences the other tracks");
+        run (0.5);
+    }
+
     // OBXD: every preset sounds
     {
         const int obxd = se_engine_count() - 1;

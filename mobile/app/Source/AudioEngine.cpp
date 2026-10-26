@@ -19,7 +19,7 @@ uint32_t mix (uint32_t h)
 AudioEngine::AudioEngine()
 {
     queue.resize ((size_t) fifo.getTotalSize());
-    for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; barStep[t] = -1; hits[t] = 0; stepPhase[t] = 0.0f; }
+    for (int t = 0; t < kTracks; ++t) { playingSlot[t] = -1; position[t] = -1; barStep[t] = -1; hits[t] = 0; stepPhase[t] = 0.0f; peak[t] = 0; }
     se_init();
     se_set_bpm (tempo);
     se_set_kit (kDefaultKit);
@@ -69,6 +69,8 @@ void AudioEngine::note (int track, int midi, bool on)
 {
     Command c; c.type = Type::note; c.a = track; c.b = midi; c.c = on; post (std::move (c));
 }
+void AudioEngine::setSolo (unsigned mask) { Command c; c.type = Type::solo; c.a = (int) mask; post (std::move (c)); }
+void AudioEngine::setGlobal (int id, int value) { Command c; c.type = Type::global; c.a = id; c.b = value; post (std::move (c)); }
 void AudioEngine::repeat (int track, int id, int velocity, int rate, bool on)
 {
     Command c; c.type = Type::repeat; c.a = track; c.b = id; c.c = velocity; c.n = rate; c.when = on ? When::now : When::update;
@@ -117,9 +119,17 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
         renderEngineBlock();
 
     int used = 0;
+    const float gain = masterGain.load (std::memory_order_relaxed);
+    float pk = masterPeak.load (std::memory_order_relaxed);
     for (int ch = 0; ch < juce::jmin (2, numOut); ++ch)
         if (out[ch] != nullptr)
+        {
             used = interp[ch].process (ratio, staging.getReadPointer (ch), out[ch], numSamples);
+            if (gain != 1.0f) juce::FloatVectorOperations::multiply (out[ch], gain, numSamples);
+            pk = juce::jmax (pk, juce::FloatVectorOperations::findMaximum (out[ch], numSamples),
+                             -juce::FloatVectorOperations::findMinimum (out[ch], numSamples));
+        }
+    masterPeak.store (pk, std::memory_order_relaxed);
     if (numOut == 1 && out[0] != nullptr)            // a mono device: the left channel only, kept simple
         for (int i = 0; i < numSamples; ++i) out[0][i] *= 0.7f;
     for (int ch = 2; ch < numOut; ++ch)
@@ -144,6 +154,11 @@ void AudioEngine::renderEngineBlock()
     for (int i = 0; i < frames; ++i) { l[i] = o[2 * i]; r[i] = o[2 * i + 1]; }
     staged += frames;
     runRepeats (frames);
+    for (int t = 0; t < kTracks; ++t)                    // (the meters: the loudest since the UI looked)
+    {
+        const int p = se_track_peak (engineTrack (t));
+        if (p > peak[t].load (std::memory_order_relaxed)) peak[t].store (p, std::memory_order_relaxed);
+    }
     if (countingIn)
     {
         // four beats of clicks at the tempo, then PLAY (the first click came with the command)
@@ -299,6 +314,14 @@ void AudioEngine::apply (Command& c)
             *slot = { c.a, c.b, c.c, interval, next, isDrum (c.a) ? -1.0 : clock + interval * 0.5 };
             break;
         }
+        case Type::solo:
+        {
+            unsigned m = 0;                              // (the app's tracks -> the engine's)
+            for (int t = 0; t < kTracks; ++t) if ((unsigned) c.a >> t & 1u) m |= 1u << engineTrack (t);
+            se_set_solo (m);
+            break;
+        }
+        case Type::global: se_set_global (c.a, c.b); break;
         case Type::renumber:
             for (int t = 0; t < kTracks; ++t)
             {

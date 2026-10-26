@@ -109,6 +109,10 @@ juce::String Project::toJson() const
     root->setProperty ("swing", swing);
     root->setProperty ("root", key.root);
     root->setProperty ("scale", key.scale);
+    root->setProperty ("volume", masterVolume);
+    auto* g = new juce::DynamicObject();
+    for (auto& [id, v] : globals) g->setProperty (juce::String (id), v);
+    root->setProperty ("globals", juce::var (g));
     juce::Array<juce::var> tracks;
     for (int t = 0; t < kTracks; ++t)
     {
@@ -143,6 +147,9 @@ std::optional<Project> Project::fromJson (const juce::String& text)
     p.swing = juce::jlimit (0, 100, (int) root.getProperty ("swing", 0));
     p.key.root = juce::jlimit (0, 11, (int) root.getProperty ("root", 0));
     p.key.scale = juce::jlimit (0, (int) scales().size() - 1, (int) root.getProperty ("scale", 0));
+    p.masterVolume = juce::jlimit (0, 127, (int) root.getProperty ("volume", 100));
+    if (auto* g = root["globals"].getDynamicObject())
+        for (auto& prop : g->getProperties()) p.globals[prop.name.toString().getIntValue()] = (int) prop.value;
     int scenes = 1;
     for (auto& tr : *tracks)
         if (auto* clips = tr["clips"].getArray()) scenes = juce::jmax (scenes, clips->size());

@@ -8,7 +8,7 @@ MainComponent::MainComponent()
 {
     setLookAndFeel (&look);
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &recButton, &tapButton, &stopClips, &fillButton, &bpm,
-                                                             &rail, &tabSession, &tabGrid, &tabPads, &projectButton, &clickButton, &undoButton,
+                                                             &rail, &tabSession, &tabGrid, &tabPads, &tabMix, &mixer, &projectButton, &clickButton, &undoButton,
                                                              &redoButton, &session,
                                                              &grid, &pads, &knobs })
         addAndMakeVisible (c);
@@ -25,6 +25,7 @@ MainComponent::MainComponent()
     tabSession.onClick = [this] { showTab (Tab::session); };
     tabGrid.onClick = [this] { showTab (Tab::grid); };
     tabPads.onClick = [this] { showTab (Tab::pads); };
+    tabMix.onClick = [this] { showTab (Tab::mix); };
     knobs.onSound = [this] { openSound(); };
     projectButton.onClick = [this] { openProject(); };
     ctl.changed = [this] { refresh(); };
@@ -120,13 +121,13 @@ void MainComponent::resized()
         redoButton.setBounds (tabs.removeFromRight (iw)); tabs.removeFromRight (4);
         undoButton.setBounds (tabs.removeFromRight (iw)); tabs.removeFromRight (8);
     }
-    const int tw = juce::jmin (100, (tabs.getWidth() - 18) / 4);
-    for (auto* b : { &tabSession, &tabGrid, &tabPads, &projectButton })
+    const int tw = juce::jmin (100, (tabs.getWidth() - 24) / 5);
+    for (auto* b : { &tabSession, &tabGrid, &tabPads, &tabMix, &projectButton })
     {
         b->setBounds (tabs.removeFromLeft (tw)); tabs.removeFromLeft (6);
     }
     stage.removeFromTop (g);
-    for (auto* c : std::initializer_list<juce::Component*> { &session, &grid, &pads }) c->setBounds (stage);
+    for (auto* c : std::initializer_list<juce::Component*> { &session, &grid, &pads, &mixer }) c->setBounds (stage);
     if (sheet) sheet->setBounds (getLocalBounds());
 }
 
@@ -139,6 +140,8 @@ void MainComponent::showTab (Tab t)
     tabSession.setToggleState (t == Tab::session, juce::dontSendNotification);
     tabGrid.setToggleState (t == Tab::grid, juce::dontSendNotification);
     tabPads.setToggleState (t == Tab::pads, juce::dontSendNotification);
+    tabMix.setToggleState (t == Tab::mix, juce::dontSendNotification);
+    mixer.setVisible (t == Tab::mix);
     grid.resized();
     refresh();
 }

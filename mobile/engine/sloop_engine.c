@@ -14,6 +14,30 @@ _Static_assert(SE_P_LEVEL == P_LEVEL && SE_P_DEC == P_DEC && SE_P_REV == P_REV &
 _Static_assert(SE_P_ATK == P_ATK && SE_P_SUS == P_SUS && SE_P_REL == P_REL && SE_P_DIST == P_DIST &&
                SE_P_CHOR == P_CHOR && SE_P_DLY == P_DLY && SE_P_E0 == P_E0, "sloop_engine.h's parameter ids follow core.h");
 _Static_assert(SE_P_MTYPE == P_MTYPE && SE_P_MRISE == P_MRISE, "sloop_engine.h's parameter ids follow core.h");
+_Static_assert(SE_G_DRLVL == G_DRLVL && SE_G_DRREV == G_DRREV && SE_G_DUST == G_DUST && SE_G_DUCK == G_DUCK &&
+               SE_G_FILT == G_FILT && SE_G_DRDLY == G_DRDLY && SE_G_RSIZE == G_RSIZE && SE_G_DTIME == G_DTIME &&
+               SE_G_DFDBK == G_DFDBK, "sloop_engine.h's global ids follow core.h");
+void se_set_solo(unsigned mask) { song.solo = (uint8_t)(mask & ((1u << NTRK) - 1u)); }
+int se_track_peak(int track)
+{
+    int32_t p;
+    if (track == TRK_DRUM) { p = drums.peak; drums.peak = 0; return p; }
+    if (track < 0 || track >= NPART) return 0;
+    p = trk[track].peak;
+    trk[track].peak = 0;
+    return p;
+}
+void se_set_global(int id, int value) { if (id >= 0 && id < G_COUNT) preview_global((uint32_t)id, value); }
+int se_global(int id) { return id >= 0 && id < G_COUNT ? song.g[id] : 0; }
+int se_global_describe(int id, int *min, int *max, int *def, const char **label)
+{
+    if (id < 0 || id >= G_COUNT) return 0;
+    if (min) *min = GP[id].min;
+    if (max) *max = GP[id].max;
+    if (def) *def = GP[id].def;
+    if (label) *label = GP[id].label;
+    return 1;
+}
 _Static_assert(SE_DRUM == TRK_DRUM && SE_TRACKS == NTRK && SE_LANES == DRUM_LANES && SE_MAX_STEPS == NSTEP &&
                SE_MAX_LOCKS == NLOCK, "sloop_engine.h's sizes follow core.h");
 

@@ -39,6 +39,9 @@ public:
     // new data for the clips of these rows, wherever they are (playing, or waiting for the bar)
     void setPlaylist (int track, When when, const std::vector<std::pair<int, const ClipData*>>& clips);
     void renumber (int from, int delta);               // the session's rows from `from` on moved by delta
+    void setSolo (unsigned mask);                       // bit t: track t soloed (0: none)
+    void setGlobal (int id, int value);                 // a global setting (sloop_engine.h SE_G_*)
+    std::atomic<float> masterGain { 1.0f };             // the master volume, at the output
 
     // ---- read by the UI
     std::atomic<int> playingSlot[kTracks];   // the session row each track plays, -1 none
@@ -49,6 +52,8 @@ public:
     std::atomic<int> paramValue[kTracks][kParamSlots];   // every SLOOP parameter as the engine has it (a new sound
     std::atomic<int> paramSerial { 0 };                  // sets them all): counts up when they change
     std::atomic<float> stepPhase[kTracks];               // how far into its step each track is, 0..1 (recording)
+    std::atomic<int> peak[kTracks];                      // each track's loudest since the UI took it (exchange 0)
+    std::atomic<float> masterPeak { 0.0f };              // the output's loudest, 0..1
     std::atomic<int> barStep[kTracks];                   // its step in the bar, clip or not (-1 stopped): a new clip
                                                          // recorded on an empty track starts where the bar is
 
@@ -60,7 +65,7 @@ public:
     void audioDeviceStopped() override {}
 
 private:
-    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber, repeat };
+    enum class Type : uint8_t { play, bpm, swing, metronome, key, fill, param, params, sound, kit, hit, note, playlist, renumber, repeat, solo, global };
     struct Command
     {
         Type type;

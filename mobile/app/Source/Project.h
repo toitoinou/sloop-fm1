@@ -4,6 +4,7 @@
 // and imported as a file.
 #pragma once
 #include "Model.h"
+#include <map>
 
 namespace sloop
 {
@@ -13,6 +14,8 @@ struct Project
     int bpm = 118;
     int swing = 0;
     Key key;
+    int masterVolume = 100;
+    std::map<int, int> globals;                  // the mix's global settings (sloop_engine.h SE_G_*), by id
     Session session;
     std::array<Sound, kTracks> sounds = kDefaultSounds;
     std::array<std::array<int, kParamSlots>, kTracks> params {};

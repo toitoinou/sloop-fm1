@@ -19,6 +19,7 @@ public:
     explicit Controller (AudioEngine& a, bool restore = true) : audio (a)
     {
         readParams();
+        for (int id : kMixGlobals) { int def = 0; se_global_describe (id, nullptr, nullptr, &def, nullptr); globals[(size_t) id] = def; }
         if (restore) prefs = store::readPrefs();
         audio.setMetronome (prefs.metronome);
         if (auto saved = restore ? store::read (store::autosaveFile()) : std::nullopt) load (*saved);
@@ -119,6 +120,8 @@ public:
         p.bpm = bpm;
         p.swing = swing;
         p.key = key;
+        p.masterVolume = masterVolume;
+        for (int id : kMixGlobals) p.globals[id] = globals[(size_t) id];
         p.session = session;
         p.sounds = sounds;
         p.params = params;
@@ -145,6 +148,15 @@ public:
         setBpm (p.bpm);
         setSwing (p.swing);
         setKey (p.key);
+        setMasterVolume (p.masterVolume);
+        soloMask = 0;
+        audio.setSolo (0);
+        for (int id : kMixGlobals)
+        {
+            int def = 0;
+            se_global_describe (id, nullptr, nullptr, &def, nullptr);
+            setGlobal (id, p.globals.count (id) ? p.globals.at (id) : def);
+        }
         for (int t = 0; t < kTracks; ++t)
         {
             const auto snd = p.sounds[(size_t) t];
@@ -422,6 +434,9 @@ public:
         static const int mix[] = { 0, 50, 36, 39 }, env[] = { 1, 2, 3, 4 }, fx[] = { 33, 34, 35, 36 },
                          mod[] = { SE_P_MTYPE, SE_P_MRATE, SE_P_MDEPTH, SE_P_MRISE };
         static const char* mixNames[] = { "Level", "Filtre", "Reverb", "Pan" };
+        // the drum track's level and sends are global settings in SLOOP (its pan: each sound's, in the kit)
+        static const int drumMix[] = { kGlobal + SE_G_DRLVL, 50, kGlobal + SE_G_DRREV, kGlobal + SE_G_DRDLY };
+        static const char* drumMixNames[] = { "Level", "Filtre", "Reverb", "Delay" };
         const int e = isDrum (sel) ? -1 : sounds[(size_t) sel].engine;
         std::array<KnobDef, kKnobs> d;
         for (int k = 0; k < kKnobs; ++k)
@@ -429,7 +444,7 @@ public:
             int id = -1;
             switch (page[(size_t) sel])
             {
-                case Page::mix: id = mix[k]; break;
+                case Page::mix: id = isDrum (sel) ? drumMix[k] : mix[k]; break;
                 case Page::macro: id = se_engine_macro (e, k); break;
                 case Page::edit1: id = SE_P_E0 + k; break;
                 case Page::edit2: id = SE_P_E0 + 4 + k; break;
@@ -441,18 +456,21 @@ public:
             }
             const char* label = nullptr;
             auto& x = d[(size_t) k];
-            if (id >= 0 && se_describe (e, id, &x.min, &x.max, &x.def, &label) && label != nullptr
-                && juce::String (label) != "-" && x.max > x.min)
+            const bool known = id >= kGlobal ? se_global_describe (id - kGlobal, &x.min, &x.max, &x.def, &label) != 0
+                                             : id >= 0 && se_describe (e, id, &x.min, &x.max, &x.def, &label) != 0;
+            if (known && label != nullptr && juce::String (label) != "-" && x.max > x.min)
             {
                 x.param = id;
                 x.valid = true;
-                x.label = page[(size_t) sel] == Page::mix ? juce::String (mixNames[k]) : juce::String (label);
+                x.label = page[(size_t) sel] == Page::mix ? juce::String (isDrum (sel) ? drumMixNames[k] : mixNames[k]) : juce::String (label);
             }
         }
         return d;
     }
     juce::String format (const KnobDef& d, int v) const
     {
+        if (d.param >= kGlobal) return d.param == kGlobal + SE_G_FILT ? (v == 0 ? juce::String ("off") : (v < 0 ? "LP " : "HP ") + juce::String (std::abs (v)))
+                                                                    : juce::String (v);
         if (const char* n = se_value_name (isDrum (sel) ? -1 : sounds[(size_t) sel].engine, d.param, v)) return n;
         if (d.param == SE_P_TFLT) return v == 0 ? juce::String ("off") : (v < 0 ? "LP " : "HP ") + juce::String (std::abs (v));
         if (d.param == SE_P_PAN) return v == 0 ? juce::String ("C") : (v < 0 ? "L" : "R") + juce::String (std::abs (v));
@@ -463,6 +481,7 @@ public:
     {
         const auto d = knobDefs()[(size_t) k];
         if (! d.valid) return 0;
+        if (d.param >= kGlobal) return globals[(size_t) (d.param - kGlobal)];
         if (! held.empty())
             if (auto* c = editClip())
                 if (const auto v = c->data.lock (held.front().second, d.param); v != kNoLock) return v;
@@ -472,13 +491,14 @@ public:
     {
         const auto d = knobDefs()[(size_t) k];
         auto* c = editClip();
-        return d.valid && ! held.empty() && c != nullptr && c->data.lock (held.front().second, d.param) != kNoLock;
+        return d.valid && d.param < kGlobal && ! held.empty() && c != nullptr && c->data.lock (held.front().second, d.param) != kNoLock;
     }
     void setKnob (int k, int v)
     {
         const auto d = knobDefs()[(size_t) k];
         if (! d.valid) return;
         v = juce::jlimit (d.min, d.max, v);
+        if (d.param >= kGlobal) { setGlobal (d.param - kGlobal, v); return; }   // (a global setting: no lock)
         if (! held.empty())
         {
             if (auto* c = editClip())
@@ -584,6 +604,44 @@ public:
         else clipEdited (t, slot);
         notify();
     }
+    // ---- the mix: a track's level, pan, sends (its own parameters; the drum track's are global settings), mute,
+    // solo; the master: its volume (at the output) and SLOOP's master bus (DJ filter, DUST, DUCK), reverb, delay
+    static constexpr int kGlobal = 1000;                 // a knob's parameter at kGlobal + id: a global setting
+    static constexpr int kMixGlobals[] = { SE_G_DRLVL, SE_G_DRREV, SE_G_DRDLY, SE_G_DUST, SE_G_DUCK, SE_G_FILT,
+                                           SE_G_RSIZE, SE_G_DTIME, SE_G_DFDBK };
+    std::array<int, 48> globals {};
+    int masterVolume = 100;                              // 0..127, 100: unity
+    unsigned soloMask = 0;
+    void setGlobal (int id, int v)
+    {
+        int lo = 0, hi = 127;
+        se_global_describe (id, &lo, &hi, nullptr, nullptr);
+        globals[(size_t) id] = juce::jlimit (lo, hi, v);
+        audio.setGlobal (id, globals[(size_t) id]);
+        notify();
+    }
+    void setMasterVolume (int v)
+    {
+        masterVolume = juce::jlimit (0, 127, v);
+        const float g = (float) masterVolume / 100.0f;
+        audio.masterGain = g * g;
+        notify();
+    }
+    void setTrackParam (int t, int id, int v)            // (the mixer: no lock, no move recorded)
+    {
+        int lo = 0, hi = 127;
+        se_describe (isDrum (t) ? -1 : sounds[(size_t) t].engine, id, &lo, &hi, nullptr, nullptr);
+        params[(size_t) t][(size_t) id] = juce::jlimit (lo, hi, v);
+        audio.setParam (t, id, params[(size_t) t][(size_t) id]);
+        notify();
+    }
+    void toggleSolo (int t)
+    {
+        soloMask ^= 1u << t;
+        audio.setSolo (soloMask);
+        notify();
+    }
+
     // ---- note repeat (the pads): a pad held plays again and again at the rate, recorded as steps when REC is on
     bool repeatOn = false;
     int repeatRate = 2;                                  // repeatSteps: 1/16
