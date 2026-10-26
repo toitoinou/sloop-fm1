@@ -1,5 +1,8 @@
 # SLOOP Touch (mobile)
 
+Documentation pour les développeurs (en anglais) : [docs/HISTORY.md](docs/HISTORY.md) (d'où vient le projet, ce
+qui a été modifié et ajouté) et [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (l'organisation du code).
+
 Une appli de groovebox tactile pour Android (puis iOS) construite sur le moteur audio de SLOOP : les mêmes
 moteurs de synthèse, kits, effets et séquenceur que le FM-1, avec une interface pensée pour le doigt.
 
@@ -11,7 +14,7 @@ les pads et les potards fonctionnent ; il manque encore beaucoup de choses (voir
 | Dossier | Contenu |
 | --- | --- |
 | `mockup/` | La maquette HTML jouable qui sert de référence pour l'interface (gestes, disposition, styles). Ouvre `mockup/sloop-touch.html` dans un navigateur ; on la fait évoluer pour essayer des idées avant de les coder en C++. |
-| `engine/` | Le moteur de SLOOP sous forme de bibliothèque C (`sloop_engine.h`), autour de `firmware/host/preview.c`, l'adaptateur que l'aperçu du web editor utilise déjà. Aucun fichier du firmware n'est modifié. |
+| `engine/` | Le moteur de SLOOP sous forme de bibliothèque C (`sloop_engine.h`), autour de `firmware/host/preview.c`, l'adaptateur que l'aperçu du web editor utilise déjà. Quelques fichiers du firmware ont été modifiés pour l'appli (voir `docs/HISTORY.md`). |
 | `tools/gen_engine_tables.sh` | Génère les tables du moteur (formes d'onde, échantillons, kits, patchs FM6) avec les générateurs du firmware, dans `engine/gen/`. |
 | `app/` | L'appli JUCE 8 (C++17) : `CMakeLists.txt` pour le bureau, `SloopTouch.jucer` pour Android. |
 
@@ -33,7 +36,7 @@ UI JUCE (thread des messages)                 thread audio
   tour. Un clip peut donc avoir n'importe quelle longueur (1 à 64 pas), une chaîne peut mélanger les longueurs,
   et une modification s'entend tout de suite.
 - L'interface ne touche jamais au moteur : elle poste des commandes, le thread audio les applique.
-- Pistes de l'appli : DR (la piste batterie de SLOOP, n° 3) puis T1–T3 (ses parties synthé 0–2).
+- Pistes de l'appli : DR (la piste batterie de SLOOP, sa dernière) puis T1–T7 (ses parties synthé 0–6), et AU, la piste audio jouée par l'appli.
 
 ## Compiler et lancer sur ordinateur (Linux, macOS, Windows)
 
