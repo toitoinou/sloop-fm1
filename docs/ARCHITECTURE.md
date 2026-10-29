@@ -357,6 +357,9 @@ at once.
   Loading a project posts a few dozen commands at once. If you add many more per project, grow the FIFO or slim
   the command.
 - **Engine track numbers differ from the app's.** DR is the engine's last track (`engineTrack`). Always convert.
+- **The tracks shown are not all the tracks.** The engine always plays its 8 tracks; a project shows
+  `trackCount` of them (4 at first) and the audio track if `audioShown`. Screens list their columns with
+  `Controller::columns()`, never `0..kTracks`.
 - **The engine renders 32-frame blocks at 44.1 kHz.** The app resamples them to the device's rate (Lagrange). Any
   timing in the audio thread is counted in engine blocks.
 - **`se_*` must be called from the audio thread.** The exceptions are the constant tables (names, descriptions).

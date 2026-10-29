@@ -66,7 +66,7 @@ juce::String colourOf (int t) { return "#" + trackColour (t).toDisplayString (fa
 
 bool hasAudio (const Project& p)
 {
-    return std::any_of (p.session.audio.begin(), p.session.audio.end(), [] (const auto& c) { return c.has_value(); });
+    return p.audioTrack && std::any_of (p.session.audio.begin(), p.session.audio.end(), [] (const auto& c) { return c.has_value(); });
 }
 
 // an audio clip's content: its sample (audio/<file> in the zip), its start and end on its beats (the DAW stretches it
@@ -119,7 +119,7 @@ juce::String projectXml (const Project& p)
     auto* structure = add (root, "Structure");
     std::array<juce::String, kTracks> trackIds;
     std::array<juce::XmlElement*, kTracks> channels {};
-    for (int t = 0; t < kTracks; ++t)
+    for (int t = 0; t < p.tracks; ++t)
     {
         auto* tr = add (*structure, "Track", &ids);
         trackIds[(size_t) t] = tr->getStringAttribute ("id");
@@ -170,7 +170,7 @@ juce::String projectXml (const Project& p)
         v->setAttribute ("max", "2");
         v->setAttribute ("value", "1");
     };
-    for (int t = 0; t < kTracks; ++t)
+    for (int t = 0; t < p.tracks; ++t)
     {
         const int pan = p.hasParams[(size_t) t] ? p.params[(size_t) t][(size_t) SE_P_PAN] : 0;      // SLOOP's PAN: -64..63
         channels[(size_t) t]->setAttribute ("destination", masterId);
@@ -189,7 +189,7 @@ juce::String projectXml (const Project& p)
     auto* lanes = add (*arrangement, "Lanes", &ids);
     lanes->setAttribute ("timeUnit", "beats");
     std::array<juce::XmlElement*, kTracks> clipsOf {};
-    for (int t = 0; t < kTracks; ++t)
+    for (int t = 0; t < p.tracks; ++t)
     {
         auto* trackLane = add (*lanes, "Lanes", &ids);
         trackLane->setAttribute ("track", trackIds[(size_t) t]);
@@ -206,7 +206,7 @@ juce::String projectXml (const Project& p)
     for (int r = 0; r < p.session.scenes(); ++r)
     {
         int steps = 0;
-        for (int t = 0; t < kTracks; ++t)
+        for (int t = 0; t < p.tracks; ++t)
             if (const auto& c = p.session.at (t, r)) steps = juce::jmax (steps, (int) c->data.length);
         const auto& ac = p.session.audio[(size_t) r];
         if (ac) steps = juce::jmax (steps, (int) (ac->beats() / kStepBeats));
@@ -223,7 +223,7 @@ juce::String projectXml (const Project& p)
             clip->setAttribute ("loopEnd", num (ac->beats()));
             addWarps (*clip, *ac, ids);
         }
-        for (int t = 0; t < kTracks; ++t)
+        for (int t = 0; t < p.tracks; ++t)
         {
             const auto& c = p.session.at (t, r);
             if (! c) continue;
@@ -253,7 +253,7 @@ juce::String projectXml (const Project& p)
         scene->setAttribute ("name", juce::String::fromUTF8 ("Scène ") + juce::String (r + 1));
         auto* row = add (*scene, "Lanes", &ids);
         row->setAttribute ("timeUnit", "beats");
-        for (int t = 0; t < kTracks; ++t)
+        for (int t = 0; t < p.tracks; ++t)
         {
             auto* slot = add (*row, "ClipSlot", &ids);
             slot->setAttribute ("track", trackIds[(size_t) t]);

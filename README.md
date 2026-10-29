@@ -11,7 +11,8 @@ for the M-VAVE FM-1; this repository is the app only.
 ## What it does
 
 ### Session
-- 8 tracks: DR (drums) and T1–T7 (synths), plus **AU**, an audio track.
+- 4 tracks to start with: DR (drums) and T1–T3 (synths). The **+** under the tracks adds more, up to T7, and
+  **AU**, the audio track; it can also take the last one away.
 - Clips of 1 to 64 steps. Clips and scenes launch at the next bar. Two fingers on several clips chain them.
 - Copy, paste, duplicate, double and quantize clips.
 - Undo and redo.

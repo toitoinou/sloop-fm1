@@ -11,30 +11,38 @@ juce::Rectangle<int> TrackRail::slot (int t) const
 {
     auto r = getLocalBounds();
     const bool vertical = getHeight() > getWidth();
-    const int n = kTracks, g = theme::gap * 3;
-    if (vertical && (r.getHeight() - g * (n - 1)) / n < 46)   // (a phone: two columns of four)
+    const int n = ctl.trackCount + 1, g = theme::gap * 3;        // (the tracks and the "+")
+    if (vertical && (r.getHeight() - g * (n - 1)) / n < 46)   // (a phone: two columns)
     {
-        const int rows = (n + 1) / 2, w = (r.getWidth() - g) / 2, h = (r.getHeight() - g * (rows - 1)) / rows;
+        const int rows = (n + 1) / 2, w = (r.getWidth() - g) / 2, h = juce::jmin (84, (r.getHeight() - g * (rows - 1)) / rows);
         return { (t / rows) * (w + g), (t % rows) * (h + g), w, h };
     }
     if (vertical)
     {
-        const int h = (r.getHeight() - g * (n - 1)) / n;
-        return { 0, t * (h + g), r.getWidth(), h };
+        const int h = juce::jmin (84, (r.getHeight() - g * (n - 1)) / n);   // (few tracks: not as tall as the rail)
+        return { 0, t * (h + g), r.getWidth(), t == n - 1 ? juce::jmin (h, 44) : h };
     }
-    const int w = (r.getWidth() - g * (n - 1)) / n;
-    return { t * (w + g), 0, w, r.getHeight() };
+    const int w = juce::jmin (140, (r.getWidth() - g * (n - 1)) / n);
+    return { t * (w + g), 0, t == n - 1 ? juce::jmin (w, 52) : w, r.getHeight() };
 }
 
 int TrackRail::trackAt (juce::Point<int> p) const
 {
-    for (int t = 0; t < kTracks; ++t) if (slot (t).contains (p)) return t;
+    for (int t = 0; t <= ctl.trackCount; ++t) if (slot (t).contains (p)) return t;
     return -1;
 }
 
 void TrackRail::paint (juce::Graphics& g)
 {
-    for (int t = 0; t < kTracks; ++t)
+    {                                                    // "+": a track more, the audio track
+        auto r = slot (ctl.trackCount).toFloat();
+        g.setColour (theme::panel);
+        g.fillRoundedRectangle (r, theme::radius);
+        g.setColour (theme::dim);
+        g.setFont (font (18.0f, true));
+        g.drawText ("+", r, juce::Justification::centred);
+    }
+    for (int t = 0; t < ctl.trackCount; ++t)
     {
         auto r = slot (t).toFloat();
         const bool sel = t == ctl.sel, muted = ctl.muted[(size_t) t];
@@ -69,7 +77,7 @@ void TrackRail::timerCallback()
         if (h != seenHits[(size_t) t]) { seenHits[(size_t) t] = h; led[(size_t) t] = 1.0f; dirty = true; }
         else if (led[(size_t) t] > 0.0f) { led[(size_t) t] = juce::jmax (0.0f, led[(size_t) t] - 0.25f); dirty = true; }
     }
-    if (downTrack >= 0 && ! longDone && now() - downTime > kLongPress)
+    if (downTrack >= 0 && downTrack < ctl.trackCount && ! longDone && now() - downTime > kLongPress)
     {
         longDone = true;
         ctl.setMute (downTrack, ! ctl.muted[(size_t) downTrack]);
@@ -91,7 +99,29 @@ void TrackRail::mouseDrag (const juce::MouseEvent& e)
 
 void TrackRail::mouseUp (const juce::MouseEvent&)
 {
-    if (downTrack >= 0 && ! longDone) ctl.select (downTrack);
+    if (downTrack == ctl.trackCount) tracksMenu();
+    else if (downTrack >= 0 && ! longDone) ctl.select (downTrack);
     downTrack = -1;
+}
+
+void TrackRail::tracksMenu()
+{
+    juce::PopupMenu m;
+    m.addSectionHeader ("Pistes");
+    if (ctl.canAddTrack())
+        m.addItem (1, juce::String::fromUTF8 ("Ajouter ") + trackId (ctl.trackCount) + " (" + trackName (ctl.trackCount) + ")");
+    if (! ctl.audioShown) m.addItem (2, "Ajouter la piste audio (AU)");
+    if (ctl.trackCount > kMinTracks)
+        m.addItem (3, juce::String ("Retirer ") + trackId (ctl.trackCount - 1) + juce::String::fromUTF8 (" (ses clips s'effacent)"));
+    if (ctl.audioShown) m.addItem (4, juce::String::fromUTF8 ("Retirer la piste audio (ses clips s'effacent)"));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (slot (ctl.trackCount))),
+                     [this] (int r)
+                     {
+                         if (r == 1) ctl.addTrack();
+                         if (r == 2) ctl.showAudioTrack (true);
+                         if (r == 3) ctl.removeTrack();
+                         if (r == 4) ctl.showAudioTrack (false);
+                         repaint();
+                     });
 }
 } // namespace sloop

@@ -71,6 +71,8 @@ Project Controller::snapshot() const
     p.audioLevel = audioLevel;
     p.audioPan = audioPan;
     p.audioMuted = audioMuted;
+    p.tracks = trackCount;
+    p.audioTrack = audioShown;
     return p;
 }
 
@@ -80,6 +82,8 @@ void Controller::load (const Project& p)
     session = p.session;
     if (session.scenes() == 0) session.addScene();
     projectName = p.name;
+    trackCount = juce::jlimit (kMinTracks, kTracks, p.tracks);
+    audioShown = p.audioTrack;
     sel = 0;
     lane = 0;
     held.clear();
@@ -182,13 +186,16 @@ void Controller::poll()
 void Controller::remember (const char* kind)
 {
     const juce::String k (kind);
-    history.remember (k, { session, editSlot, playlist, audioRow }, juce::Time::getMillisecondCounterHiRes(), k == "rec");
+    history.remember (k, state(), juce::Time::getMillisecondCounterHiRes(), k == "rec");
 }
-void Controller::undo() { if (auto u = history.undo ({ session, editSlot, playlist, audioRow })) restore (std::move (*u)); }
-void Controller::redo() { if (auto u = history.redo ({ session, editSlot, playlist, audioRow })) restore (std::move (*u)); }
+void Controller::undo() { if (auto u = history.undo (state())) restore (std::move (*u)); }
+void Controller::redo() { if (auto u = history.redo (state())) restore (std::move (*u)); }
 
 void Controller::restore (UndoState u)
 {
+    trackCount = u.trackCount;
+    audioShown = u.audioShown;
+    if (sel >= trackCount) sel = 0;
     held.clear();
     pendingRecord.clear();
     recordedHeld.clear();
@@ -246,5 +253,47 @@ void Controller::shiftRows (int from, int d)
     if (audioQueued >= from) audioQueued += d;
     // the audio thread reports rows: keep it in step with the new numbering
     audio.renumber (from, d);
+}
+
+// ---- the tracks shown
+std::vector<int> Controller::columns() const
+{
+    std::vector<int> c;
+    for (int t = 0; t < trackCount; ++t) c.push_back (t);
+    if (audioShown) c.push_back (kAudio);
+    return c;
+}
+
+void Controller::addTrack()
+{
+    if (! canAddTrack()) return;
+    remember ("track");
+    select (trackCount++);
+}
+
+void Controller::removeTrack()
+{
+    if (trackCount <= kMinTracks) return;
+    remember ("track");
+    const int t = --trackCount;
+    stopTrack (t);
+    for (auto& c : session.cols[(size_t) t]) c.reset();
+    if (soloMask >> t & 1u) toggleSolo (t);
+    if (sel >= trackCount) select (0);
+    notify();
+}
+
+void Controller::showAudioTrack (bool on)
+{
+    if (on == audioShown) return;
+    remember ("track");
+    audioShown = on;
+    if (! on)
+    {
+        stopAudio();
+        for (auto& c : session.audio) c.reset();
+        if (soloMask >> kAudio & 1u) toggleSolo (kAudio);
+    }
+    notify();
 }
 } // namespace sloop

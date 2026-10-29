@@ -9,8 +9,8 @@ using namespace ui;
 
 juce::Rectangle<int> SessionGrid::cellRect (int t, int r) const
 {
-    const int v = t - first;
-    if (v < 0 || v >= shown()) return {};           // (a track on another page)
+    const int v = column (t) - first;
+    if (column (t) < 0 || v < 0 || v >= shown()) return {};   // (a track not shown, or on another page)
     return { v * (colW() + theme::gap), r * (rowH + theme::gap), colW(), rowH };
 }
 
@@ -206,7 +206,7 @@ void SessionGrid::mouseDown (const juce::MouseEvent& e)
     const int src = e.source.getIndex();
     int t = -1, s = -1;
     for (int r = 0; r < ctl.session.scenes() && t < 0; ++r)
-        for (int k = 0; k < kColumns; ++k)
+        for (int k : ctl.columns())
             if (cellRect (k, r).contains (p)) { t = k; s = r; break; }
     if (press.source >= 0 && press.source != src)
     {
@@ -323,9 +323,11 @@ void SessionView::resized()
 void SessionView::paint (juce::Graphics& g)
 {
     const int sceneW = grid.sceneW(), colW = grid.colW();
-    for (int t = grid.first; t < grid.first + grid.shown() && t < SessionGrid::kColumns; ++t)
+    const auto columns = ctl.columns();
+    for (int c = grid.first; c < grid.first + grid.shown() && c < (int) columns.size(); ++c)
     {
-        juce::Rectangle<int> r ((t - grid.first) * (colW + theme::gap), 0, colW, headH);
+        const int t = columns[(size_t) c];
+        juce::Rectangle<int> r ((c - grid.first) * (colW + theme::gap), 0, colW, headH);
         g.setColour (theme::track (t));
         g.setFont (font (14.0f, true));
         g.drawText (t == kAudio ? "AU" : trackId (t), r.withTrimmedLeft (8), juce::Justification::centredLeft);
@@ -339,12 +341,12 @@ void SessionView::paint (juce::Graphics& g)
     }
     g.setColour (theme::dim);
     auto corner = juce::Rectangle<int> (getWidth() - sceneW, 0, sceneW, headH);
-    if (grid.shown() < SessionGrid::kColumns)            // the pages of tracks: < >
+    if (grid.shown() < grid.columns())                   // the pages of tracks: < >
     {
         for (int i = 0; i < 2; ++i)
         {
             auto b = (i == 0 ? corner.withWidth (sceneW / 2) : corner.withTrimmedLeft (sceneW / 2)).reduced (2, 4).toFloat();
-            const bool can = i == 0 ? grid.first > 0 : grid.first + grid.shown() < SessionGrid::kColumns;
+            const bool can = i == 0 ? grid.first > 0 : grid.first + grid.shown() < grid.columns();
             g.setColour (theme::cellBeat.withAlpha (can ? 1.0f : 0.35f));
             g.fillRoundedRectangle (b, theme::radius);
             g.setColour (theme::fg.withAlpha (can ? 1.0f : 0.35f));
@@ -363,12 +365,16 @@ void SessionView::mouseUp (const juce::MouseEvent& e)
     const int sceneW = grid.sceneW(), colW = grid.colW();
     if (e.getPosition().x >= getWidth() - sceneW)
     {
-        if (grid.shown() < SessionGrid::kColumns) grid.page (e.getPosition().x < getWidth() - sceneW / 2 ? -1 : 1);
+        if (grid.shown() < grid.columns()) grid.page (e.getPosition().x < getWidth() - sceneW / 2 ? -1 : 1);
         repaint();
         return;
     }
-    const int t = grid.first + e.getPosition().x / (colW + theme::gap);
-    if (t == kAudio && t < grid.first + grid.shown()) { ctl.stopAudio(); ctl.notify(); }
-    else if (t >= grid.first && t < grid.first + grid.shown() && t < kTracks) { ctl.stopTrack (t); ctl.notify(); }
+    const int c = grid.first + e.getPosition().x / (colW + theme::gap);
+    const auto columns = ctl.columns();
+    if (c >= grid.first + grid.shown() || c >= (int) columns.size()) return;
+    const int t = columns[(size_t) c];
+    if (t == kAudio) ctl.stopAudio();
+    else ctl.stopTrack (t);
+    ctl.notify();
 }
 } // namespace sloop

@@ -52,6 +52,15 @@ public:
     std::array<std::array<int, kParamSlots>, kTracks> params {};   // as the engine has them (the knobs' values)
     void select (int t) { sel = t; held.clear(); audio.midiTrack = t; notify(); }
     void setSound (int t, int engine, int preset);
+    // the tracks shown (a phone has room for few): DR, T1.. up to trackCount, then the audio track if shown. The
+    // engine plays all of them; a track taken away is stopped and emptied (one step back)
+    int trackCount = kMinTracks;
+    bool audioShown = false;
+    std::vector<int> columns() const;                    // the session's and the mixer's columns, in order
+    bool canAddTrack() const { return trackCount < kTracks; }
+    void addTrack();
+    void removeTrack();                                  // the last one (not DR, not under kMinTracks)
+    void showAudioTrack (bool on);
 
     // ---- the session: clips and scenes, what each track plays (a chain of rows) and what waits for the bar
     Session session;
@@ -165,7 +174,9 @@ private:
     static std::array<int, kTracks> filled (int v) { std::array<int, kTracks> a; a.fill (v); return a; }
     static std::array<Page, kTracks> firstPages() { std::array<Page, kTracks> a; a.fill (Page::macro); a[0] = Page::mix; return a; }
 
-    struct UndoState { Session session; std::array<int, kTracks> editSlot; std::array<std::vector<int>, kTracks> playlist; int audioRow; };
+    struct UndoState { Session session; std::array<int, kTracks> editSlot; std::array<std::vector<int>, kTracks> playlist; int audioRow;
+                       int trackCount; bool audioShown; };
+    UndoState state() const { return { session, editSlot, playlist, audioRow, trackCount, audioShown }; }
     UndoHistory<UndoState> history;
     void restore (UndoState);
 

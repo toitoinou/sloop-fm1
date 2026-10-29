@@ -21,6 +21,8 @@ struct Project
     std::array<std::array<int, kParamSlots>, kTracks> params {};
     std::array<bool, kTracks> hasParams {};      // a track's saved values (a new project, a track not saved: the sound's)
     int audioLevel = 90, audioPan = 0;           // the audio track's fader and pan (its clips: session.audio)
+    int tracks = kMinTracks;                     // the tracks shown: DR, T1.. (the engine plays all kTracks)
+    bool audioTrack = false;                     // the audio track shown
     bool audioMuted = false;
 
     juce::String toJson() const;

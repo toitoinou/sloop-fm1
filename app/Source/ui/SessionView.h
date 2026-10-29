@@ -19,16 +19,23 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 
     static constexpr int rowH = 58, addH = 44;
-    static constexpr int kColumns = kTracks + 1;        // the tracks, then the audio track (kAudio)
-    // the tracks in sight: all of them when they fit (a column 76 points or more), else a page of them
+    // the columns: the tracks shown, then the audio track if shown (Controller::columns)
+    int columns() const { return (int) ctl.columns().size(); }
+    int column (int t) const                             // a track's column, -1: not shown
+    {
+        const auto c = ctl.columns();
+        const auto it = std::find (c.begin(), c.end(), t);
+        return it == c.end() ? -1 : (int) (it - c.begin());
+    }
+    // the columns in sight: all of them when they fit (a column 76 points or more), else a page of them
     int sceneW() const { return getWidth() < 420 ? 44 : 58; }
-    int shown() const { return juce::jlimit (4, kColumns, (getWidth() - sceneW()) / 78); }
+    int shown() const { return juce::jlimit (juce::jmin (4, columns()), columns(), (getWidth() - sceneW()) / 78); }
     int colW() const { return (getWidth() - sceneW() - shown() * theme::gap) / shown(); }
     int first = 0;                                   // the first track in sight
     std::function<void (int)> onAudioEdit, onAudioImport;   // the audio track: a clip's editor; a sound into a row
     void page (int direction)
     {
-        first = juce::jlimit (0, juce::jmax (0, kColumns - shown()), first + direction * shown());
+        first = juce::jlimit (0, juce::jmax (0, columns() - shown()), first + direction * shown());
         repaint();
     }
 
@@ -61,8 +68,9 @@ public:
     void refresh()
     {
         grid.setSize (viewport.getMaximumVisibleWidth(), grid.wantedHeight());
-        if (ctl.sel < grid.first || ctl.sel >= grid.first + grid.shown())   // (the selected track in sight)
-            grid.first = juce::jmin (SessionGrid::kColumns - grid.shown(), ctl.sel / grid.shown() * grid.shown());
+        grid.first = juce::jlimit (0, juce::jmax (0, grid.columns() - grid.shown()), grid.first);   // (tracks taken away)
+        if (const int c = grid.column (ctl.sel); c < grid.first || c >= grid.first + grid.shown())   // (the selected track in sight)
+            grid.first = juce::jmax (0, juce::jmin (grid.columns() - grid.shown(), c / grid.shown() * grid.shown()));
         grid.repaint();
         repaint();
     }

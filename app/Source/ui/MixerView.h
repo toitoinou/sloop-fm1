@@ -22,11 +22,18 @@ public:
 
 private:
     enum Part { name, mute, solo, pan, rev, dly, fader, pagePrev, pageNext, record, none };
-    static constexpr int kStrips = kTracks + 1, kMaster = kStrips;   // the tracks, the audio track (kAudio); the master
+    static constexpr int kMaster = kTracks + 1;          // the master's strip (the others: the tracks shown, Controller::columns)
+    int strips() const { return (int) ctl.columns().size(); }
+    int column (int strip) const
+    {
+        const auto c = ctl.columns();
+        const auto it = std::find (c.begin(), c.end(), strip);
+        return it == c.end() ? -1 : (int) (it - c.begin());
+    }
     struct Hit { int strip = -1; Part part = none; };
     void timerCallback() override;
     int masterW() const { return juce::jmin (130, getWidth() / 4); }
-    int shown() const { return juce::jlimit (4, kStrips, (getWidth() - masterW()) / 70); }
+    int shown() const { return juce::jlimit (juce::jmin (4, strips()), strips(), (getWidth() - masterW()) / 70); }
     juce::Rectangle<int> stripRect (int strip) const;
     juce::Rectangle<int> partRect (int strip, Part) const;
     Hit hitAt (juce::Point<int>) const;

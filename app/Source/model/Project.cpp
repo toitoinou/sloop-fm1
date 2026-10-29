@@ -110,10 +110,12 @@ juce::String Project::toJson() const
     root->setProperty ("root", key.root);
     root->setProperty ("scale", key.scale);
     root->setProperty ("volume", masterVolume);
+    root->setProperty ("trackCount", tracks);
+    root->setProperty ("audioTrack", audioTrack);
     auto* g = new juce::DynamicObject();
     for (auto& [id, v] : globals) g->setProperty (juce::String (id), v);
     root->setProperty ("globals", juce::var (g));
-    juce::Array<juce::var> tracks;
+    juce::Array<juce::var> trackList;
     for (int t = 0; t < kTracks; ++t)
     {
         auto* tr = new juce::DynamicObject();
@@ -128,9 +130,9 @@ juce::String Project::toJson() const
         juce::Array<juce::var> clips;
         for (auto& c : session.cols[(size_t) t]) clips.add (c ? clipVar (*c) : juce::var());
         tr->setProperty ("clips", clips);
-        tracks.add (juce::var (tr));
+        trackList.add (juce::var (tr));
     }
-    root->setProperty ("tracks", tracks);
+    root->setProperty ("tracks", trackList);
     // the audio track: its mix, its clips (a sample of the app's samples folder each: the file is not in here)
     auto* au = new juce::DynamicObject();
     au->setProperty ("level", audioLevel);
@@ -198,6 +200,13 @@ std::optional<Project> Project::fromJson (const juce::String& text)
         p.audioPan = juce::jlimit (-64, 63, (int) au.getProperty ("pan", 0));
         p.audioMuted = au.getProperty ("mute", false);
     }
+    // the tracks shown: as saved, else (an older file) as many as hold clips, the audio track if it has any
+    int used = kMinTracks;
+    for (int t = 0; t < kTracks; ++t)
+        for (auto& c : p.session.cols[(size_t) t]) if (c) used = juce::jmax (used, t + 1);
+    p.tracks = juce::jlimit (kMinTracks, kTracks, (int) root.getProperty ("trackCount", used));
+    p.tracks = juce::jmax (p.tracks, used);                 // (never a track with clips out of sight)
+    p.audioTrack = root.getProperty ("audioTrack", false);
     if (aclips != nullptr)
         for (int s = 0; s < aclips->size(); ++s)
         {
@@ -212,6 +221,7 @@ std::optional<Project> Project::fromJson (const juce::String& text)
             c.stretch = v.getProperty ("stretch", true);
             c.gain = juce::jlimit (0.0f, 4.0f, (float) v.getProperty ("gain", 1.0f));
             p.session.audio[(size_t) s] = c;
+            p.audioTrack = true;
         }
     return p;
 }

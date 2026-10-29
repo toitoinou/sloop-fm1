@@ -54,6 +54,7 @@ inline juce::Colour trackColour (int t)                 // (kAudio: the audio tr
     return t == kTracks ? juce::Colour (0xffcfc3a4) : c[t & 7];
 }
 constexpr int kAudio = kTracks;     // the audio track (samples played by the app, not by SLOOP): the session's last column
+constexpr int kMinTracks = 4;       // a project shows DR and T1..T3 at least; more on demand, up to kTracks
 
 // An audio clip: a sample (a file of the app's samples folder, at the engine's rate), played from `start` to `end`
 // (the file is untouched), looped. Its own tempo says how many beats that is (rounded: at least one); it plays

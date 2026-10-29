@@ -42,6 +42,8 @@ public:
         a.bpm = 93.5;
         a.stretch = false;
         p.session.audio[4] = a;
+        p.audioTrack = true;
+        p.tracks = 5;
         p.audioLevel = 70;
         p.audioPan = -20;
         return p;
@@ -79,6 +81,8 @@ public:
             expect (a.has_value() && a->file == "loop.wav" && a->start == 100 && a->end == 44100 && ! a->stretch);
             expectWithinAbsoluteError (a ? a->bpm : 0.0, 93.5, 1.0e-9);
             expectEquals (back->audioPan, -20);
+            expectEquals (back->tracks, 5);
+            expect (back->audioTrack);
         }
 
         beginTest ("an older file: its engine parameters moved past the MOD stage");
@@ -91,6 +95,20 @@ public:
             params->set (63, 111);                   // (format 2: the engine's first parameter was 63)
             const auto back = Project::fromJson (juce::JSON::toString (json));
             expect (back.has_value() && back->params[3][63 + 4] == 111);
+        }
+
+        beginTest ("an older file shows its tracks with clips, the audio track if it has some");
+        {
+            auto json = juce::JSON::parse (sample().toJson());
+            json.getDynamicObject()->removeProperty ("trackCount");
+            json.getDynamicObject()->removeProperty ("audioTrack");
+            const auto back = Project::fromJson (juce::JSON::toString (json));
+            expect (back && back->tracks == kMinTracks && back->audioTrack);
+            auto p = sample();
+            p.session.at (6, 0) = Session::newClip (6, "Late");
+            p.tracks = 4;                            // (a track with clips is never out of sight)
+            const auto shown = Project::fromJson (p.toJson());
+            expect (shown && shown->tracks == 7);
         }
 
         beginTest ("a file that is not a project is refused");
@@ -131,7 +149,7 @@ public:
             const auto xml = juce::XmlDocument::parse (dawproject::projectXml (sample()));
             expect (xml != nullptr);
             if (xml == nullptr) return;
-            expectEquals (xml->getChildByName ("Structure")->getNumChildElements(), kTracks + 2);
+            expectEquals (xml->getChildByName ("Structure")->getNumChildElements(), 5 + 2);   // (the tracks shown, AU, master)
             expectEquals (xml->getChildByName ("Scenes")->getNumChildElements(), sample().session.scenes());
         }
     }

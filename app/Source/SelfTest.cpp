@@ -307,7 +307,7 @@ int runSelfTest()
         const auto data = dawproject::zip (snap);
         juce::MemoryInputStream in (data, false);
         juce::ZipFile zip (in);
-        check (xml != nullptr && scenes == snap.session.scenes() && tracks == kTracks + 1 && notes > 100
+        check (xml != nullptr && scenes == snap.session.scenes() && tracks == ctl.trackCount + 1 && notes > 100
                    && zip.getNumEntries() == 2 && zip.getEntry ("project.xml") != nullptr,
                "a DAWproject export (tracks, scenes, notes)");
     }

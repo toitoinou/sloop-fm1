@@ -86,6 +86,7 @@ bool Controller::importAudio (int s, const juce::URL& from, juce::String& error)
     while (s >= session.scenes()) session.addScene();
     remember ("clip");
     session.audio[(size_t) s] = c;
+    audioShown = true;                                   // (a sound in: the audio track shows)
     notify();
     return true;
 }

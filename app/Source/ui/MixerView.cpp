@@ -10,8 +10,8 @@ using namespace ui;
 juce::Rectangle<int> MixerView::stripRect (int strip) const
 {
     if (strip == kMaster) return getLocalBounds().removeFromRight (masterW());
-    const int v = strip - first, n = shown(), w = (getWidth() - masterW() - 8) / n;
-    if (v < 0 || v >= n) return {};
+    const int v = column (strip) - first, n = shown(), w = (getWidth() - masterW() - 8) / n;
+    if (column (strip) < 0 || v < 0 || v >= n) return {};
     return { v * w, 0, w - 4, getHeight() };
 }
 
@@ -22,8 +22,8 @@ juce::Rectangle<int> MixerView::partRect (int strip, Part part) const
     r = r.reduced (4, 4);
     const bool master = strip == kMaster;
     auto top = r.removeFromTop (30);
-    if (part == name) return master && shown() < kStrips ? top.withTrimmedRight (top.getWidth() / 2) : top;
-    if (master && shown() < kStrips)
+    if (part == name) return master && shown() < strips() ? top.withTrimmedRight (top.getWidth() / 2) : top;
+    if (master && shown() < strips())
     {
         auto pages = top.withTrimmedLeft (top.getWidth() / 2);
         if (part == pagePrev) return pages.removeFromLeft (pages.getWidth() / 2).reduced (1);
@@ -117,6 +117,7 @@ void MixerView::timerCallback()
 
 void MixerView::paint (juce::Graphics& g)
 {
+    first = juce::jlimit (0, juce::jmax (0, strips() - shown()), first);   // (tracks taken away)
     for (int strip = 0; strip <= kMaster; ++strip)
     {
         auto box = stripRect (strip);
@@ -129,11 +130,11 @@ void MixerView::paint (juce::Graphics& g)
         g.setColour (col);
         g.setFont (font (14.0f, true));
         g.drawText (master ? juce::String (box.getWidth() < 120 ? "MST" : "MASTER") : strip == kAudio ? juce::String ("AU") : juce::String (trackId (strip)), nm.withTrimmedLeft (4), juce::Justification::centredLeft, true);
-        if (master && shown() < kStrips)
+        if (master && shown() < strips())
             for (auto p : { pagePrev, pageNext })
             {
                 auto r = partRect (strip, p).toFloat();
-                const bool can = p == pagePrev ? first > 0 : first + shown() < kStrips;
+                const bool can = p == pagePrev ? first > 0 : first + shown() < strips();
                 g.setColour (theme::cellBeat.withAlpha (can ? 1.0f : 0.35f));
                 g.fillRoundedRectangle (r, theme::radius);
                 g.setColour (theme::fg.withAlpha (can ? 1.0f : 0.35f));
@@ -216,7 +217,7 @@ void MixerView::mouseDown (const juce::MouseEvent& e)
     if (h.strip < 0) return;
     if (h.part == pagePrev || h.part == pageNext)
     {
-        first = juce::jlimit (0, kStrips - shown(), first + (h.part == pagePrev ? -1 : 1) * shown());
+        first = juce::jlimit (0, juce::jmax (0, strips() - shown()), first + (h.part == pagePrev ? -1 : 1) * shown());
         repaint();
         return;
     }
