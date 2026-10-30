@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The clips' own rules, undo's steps, a sample's tempo guessed.
+#include "audio/DropoutWatch.h"
 #include "control/UndoHistory.h"
 #include "model/Samples.h"
 
@@ -88,6 +89,24 @@ public:
             expectEquals (a.beats(), 3);
             a.end = 10;
             expectEquals (a.beats(), 1);
+        }
+
+        beginTest ("drop-outs: a few within a short while, past the settling; a count started over");
+        {
+            DropoutWatch w;
+            w.restart (0.0);
+            expect (! w.sample (100.0, 5));          // (the first look: the count so far)
+            expect (! w.sample (1000.0, 9));         // (settling: not counted)
+            expect (! w.sample (4000.0, 10));
+            expect (! w.sample (5000.0, 11));
+            expect (w.sample (6000.0, 12), "three in 10 s");
+            expectEquals (w.recentCount(), 3);
+            expect (! w.sample (7000.0, 13));        // (the window started again)
+            expect (! w.sample (30000.0, 15));       // (two, long after)
+            expect (! w.sample (31000.0, 0));        // (a new stream: its count from 0, settling again)
+            expect (! w.sample (32000.0, 1));
+            expect (! w.sample (33000.0, -1));       // (a device that does not count)
+            expectEquals (w.totalSinceStart(), 6);
         }
 
         beginTest ("undo: one step per kind of edit close together, a recording pass as one");

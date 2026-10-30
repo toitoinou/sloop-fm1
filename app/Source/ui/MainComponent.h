@@ -12,6 +12,7 @@
 #include "ui/StepSheet.h"
 #include "ui/TrackRail.h"
 #include "ui/Widgets.h"
+#include "audio/DropoutWatch.h"
 #include "audio/Midi.h"
 
 namespace sloop
@@ -53,6 +54,13 @@ private:
     void tap();
     void setupAudio();
     void nextBufferSize();
+    void setBufferSize (int frames);                 // (kept in the settings)
+    int largerBufferSize() const;                    // the next size up worth the latency (about twice), 0: none
+    void watchDropouts();
+    void offerLargerBuffer (int dropouts);
+    DropoutWatch dropouts;
+    juce::ScopedMessageBox dropoutBox;
+    bool dropoutAsked = false;                       // (once per buffer size)
     juce::String audioText();
 
     theme::LookAndFeel look;

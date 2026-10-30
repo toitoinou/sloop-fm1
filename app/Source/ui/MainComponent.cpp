@@ -169,6 +169,7 @@ void MainComponent::refresh()
 void MainComponent::timerCallback()
 {
     ctl.poll();
+    if (ticks % 30 == 0) watchDropouts();               // once a second
     if (++ticks % (30 * 30) == 0) autosave();           // every 30 s, besides when the app goes to the background
 }
 
@@ -274,8 +275,9 @@ void MainComponent::openSound()
     }));
 }
 
-// the low-latency path: Oboe (AAudio, or OpenSL ES on old phones) and a small buffer; the settings show the buffer
-// and a tap there tries the next size, to find the smallest one that does not crackle on this phone
+// the low-latency path: Oboe (AAudio, or OpenSL ES on old phones) and a small buffer (the one kept in the settings,
+// else the smallest from 128 up); the settings show it and a tap there tries the next size. A phone that cannot keep
+// up drops out: watchDropouts offers a larger one
 void MainComponent::setupAudio()
 {
     devices.initialiseWithDefaultDevices (0, 2);     // no input: no microphone permission on Android
@@ -291,9 +293,74 @@ void MainComponent::setupAudio()
         int best = dev->getDefaultBufferSize();
         for (int size : dev->getAvailableBufferSizes())
             if (size >= 128) { best = juce::jmin (best, size); break; }
+        if (const int kept = ctl.prefs.bufferSize; kept > 0)   // (the one chosen: the nearest the device has)
+            for (int size : dev->getAvailableBufferSizes())
+                if (size >= kept) { best = size; break; }
         setup.bufferSize = best;
         devices.setAudioDeviceSetup (setup, true);
     }
+    dropouts.restart (juce::Time::getMillisecondCounterHiRes());
+}
+
+void MainComponent::setBufferSize (int frames)
+{
+    auto setup = devices.getAudioDeviceSetup();
+    setup.bufferSize = frames;
+    devices.setAudioDeviceSetup (setup, true);
+    auto p = ctl.prefs;
+    p.bufferSize = devices.getCurrentAudioDevice() != nullptr ? devices.getCurrentAudioDevice()->getCurrentBufferSizeSamples() : frames;
+    ctl.setPrefs (p);
+    dropouts.restart (juce::Time::getMillisecondCounterHiRes());
+    dropoutAsked = false;
+}
+
+int MainComponent::largerBufferSize() const
+{
+    auto* dev = devices.getCurrentAudioDevice();
+    if (dev == nullptr) return 0;
+    const int now = dev->getCurrentBufferSizeSamples();
+    int next = 0;
+    for (int size : dev->getAvailableBufferSizes())          // (about twice: a step that makes a difference)
+        if (size >= now * 3 / 2 && size <= 2048) { next = size; break; }
+    return next;
+}
+
+// on the timer, once a second: the device's drop-outs; a few lately, and a larger buffer is offered (once per size;
+// "Ne plus demander": never, the settings turn it back on)
+void MainComponent::watchDropouts()
+{
+    auto* dev = devices.getCurrentAudioDevice();
+    if (dev == nullptr) return;
+    if (! dropouts.sample (juce::Time::getMillisecondCounterHiRes(), dev->getXRunCount())) return;
+    if (ctl.prefs.warnDropouts && ! dropoutAsked && largerBufferSize() > 0) offerLargerBuffer (dropouts.recentCount());
+}
+
+void MainComponent::offerLargerBuffer (int count)
+{
+    auto* dev = devices.getCurrentAudioDevice();
+    const int now = dev->getCurrentBufferSizeSamples(), next = largerBufferSize();
+    const double rate = juce::jmax (1.0, dev->getCurrentSampleRate());
+    dropoutAsked = true;
+    auto ms = [rate] (int frames) { return juce::String (frames * 1000.0 / rate, 0) + " ms"; };
+    const auto text = juce::String::fromUTF8 ("Le son a décroché ") + juce::String (count)
+                    + juce::String::fromUTF8 (" fois en quelques secondes (des craquements) : ce téléphone n'arrive pas "
+                                              "à suivre avec un tampon si petit.\n\nUn tampon plus grand l'évite, avec "
+                                              "un peu plus de latence : ")
+                    + juce::String (now) + juce::String::fromUTF8 (" → ") + juce::String (next) + juce::String::fromUTF8 (" échantillons (")
+                    + ms (now) + juce::String::fromUTF8 (" → ") + ms (next) + ").";
+    dropoutBox = juce::AlertWindow::showScopedAsync (
+        juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+            .withTitle (juce::String::fromUTF8 ("Le son décroche"))
+            .withMessage (text)
+            .withButton (juce::String::fromUTF8 ("Agrandir le tampon"))
+            .withButton (juce::String::fromUTF8 ("Ne plus demander"))
+            .withButton ("Plus tard")
+            .withAssociatedComponent (this),
+        [this, next] (int choice)                    // (three buttons: 1, 2, then 0 for the last one or a close)
+        {
+            if (choice == 1) setBufferSize (next);
+            if (choice == 2) { auto p = ctl.prefs; p.warnDropouts = false; ctl.setPrefs (p); }
+        });
 }
 
 void MainComponent::nextBufferSize()
@@ -306,9 +373,7 @@ void MainComponent::nextBufferSize()
     int next = sizes[0];
     for (int size : sizes)
         if (size > now && size <= 2048) { next = size; break; }
-    auto setup = devices.getAudioDeviceSetup();
-    setup.bufferSize = next;
-    devices.setAudioDeviceSetup (setup, true);
+    setBufferSize (next);
 }
 
 // the audio device and its buffer (the settings: a tap tries the next size, to find the smallest one that does
@@ -320,8 +385,11 @@ juce::String MainComponent::audioText()
     const double rate = dev->getCurrentSampleRate();
     const int buffer = dev->getCurrentBufferSizeSamples(), extra = dev->getOutputLatencyInSamples();
     const double ms = rate > 0 ? (buffer + extra) * 1000.0 / rate : 0.0;
+    const int lost = dropouts.totalSinceStart();
     return devices.getCurrentAudioDeviceType() + juce::String::fromUTF8 (" · buffer ") + juce::String (buffer)
-           + juce::String::fromUTF8 (" · ≈ ") + juce::String (ms, 1) + " ms";
+           + juce::String::fromUTF8 (" · ≈ ") + juce::String (ms, 1) + " ms"
+           + (lost > 0 ? juce::String::fromUTF8 (" · ") + juce::String (lost) + juce::String::fromUTF8 (lost == 1 ? " décrochage" : " décrochages")
+                       : juce::String());
 }
 
 // a recording just made: the phone's share sheet (Drive, a message, Files...); a computer: where to save a copy

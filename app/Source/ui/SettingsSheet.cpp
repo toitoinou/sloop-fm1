@@ -48,7 +48,8 @@ SettingsSheet::SettingsSheet (Controller& c, std::function<void()> close, std::f
     countIn.onClick = [this] { auto p = ctl.prefs; p.countIn = ! p.countIn; ctl.setPrefs (p); sync(); };
     quantize.onClick = [this] { auto p = ctl.prefs; p.quantizeRec = ! p.quantizeRec; ctl.setPrefs (p); sync(); };
     buffer.onClick = [this, nextBuffer] { nextBuffer(); sync(); };
-    for (auto* b : { &metronome, &countIn, &quantize, &buffer }) content.addAndMakeVisible (b);
+    warnDropouts.onClick = [this] { auto p = ctl.prefs; p.warnDropouts = ! p.warnDropouts; ctl.setPrefs (p); sync(); };
+    for (auto* b : { &metronome, &countIn, &quantize, &buffer, &warnDropouts }) content.addAndMakeVisible (b);
     clockOut.onClick = [this] { auto p = ctl.prefs; p.midiClockOut = ! p.midiClockOut; ctl.setPrefs (p); sync(); };
     bluetooth.onClick = [] { MidiHub::pairBluetooth(); };
     midiInputs.onClick = [this] { sync(); };          // (a tap: the list again)
@@ -78,6 +79,7 @@ void SettingsSheet::sync()
     countIn.setToggleState (ctl.prefs.countIn, juce::dontSendNotification);
     quantize.setToggleState (ctl.prefs.quantizeRec, juce::dontSendNotification);
     buffer.setButtonText (audioInfo ? audioInfo() : juce::String());
+    warnDropouts.setToggleState (ctl.prefs.warnDropouts, juce::dontSendNotification);
     midiInputs.setButtonText (midiInfo ? midiInfo() : juce::String());
     clockOut.setToggleState (ctl.prefs.midiClockOut, juce::dontSendNotification);
     link.setToggleState (ctl.prefs.link, juce::dontSendNotification);
@@ -121,7 +123,7 @@ void SettingsSheet::resized()
     label (1); flow (sc, 118);
     label (2); swing.setBounds (0, y, w, bh); y += bh + 8;
     label (3); flow ({ &metronome, &countIn, &quantize }, 180);
-    label (4); flow ({ &buffer }, 200);
+    label (4); flow ({ &buffer, &warnDropouts }, 200);
     label (5);
     juce::Array<juce::Component*> midiRow { &midiInputs, &clockOut };
     if (bluetooth.isVisible()) midiRow.add (&bluetooth);

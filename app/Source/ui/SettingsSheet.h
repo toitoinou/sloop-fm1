@@ -29,6 +29,7 @@ private:
     juce::Slider swing;
     juce::TextButton metronome { juce::String::fromUTF8 ("Métronome") }, countIn { juce::String::fromUTF8 ("Décompte 1 mesure") },
         quantize { juce::String::fromUTF8 ("Enregistrer sur la grille") }, buffer, ok { "OK" },
+        warnDropouts { juce::String::fromUTF8 ("Prévenir si le son décroche") },
         midiInputs, bluetooth { juce::String::fromUTF8 ("Bluetooth MIDI…") }, clockOut { juce::String::fromUTF8 ("Horloge MIDI (sortie)") },
         link;
     struct Label : juce::Component

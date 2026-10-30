@@ -28,6 +28,7 @@
         <FILE id="Fs012" name="AudioEngine.cpp" compile="1" resource="0" file="Source/audio/AudioEngine.cpp"/>
         <FILE id="Fs013" name="AudioEngine.h" compile="0" resource="0" file="Source/audio/AudioEngine.h"/>
         <FILE id="Fs014" name="ClipPlayer.cpp" compile="1" resource="0" file="Source/audio/ClipPlayer.cpp"/>
+        <FILE id="Fs900" name="DropoutWatch.h" compile="0" resource="0" file="Source/audio/DropoutWatch.h"/>
         <FILE id="Fs015" name="ClipPlayer.h" compile="0" resource="0" file="Source/audio/ClipPlayer.h"/>
         <FILE id="Fs016" name="LinkSync.cpp" compile="1" resource="0" file="Source/audio/LinkSync.cpp"/>
         <FILE id="Fs017" name="LinkSync.h" compile="0" resource="0" file="Source/audio/LinkSync.h"/>

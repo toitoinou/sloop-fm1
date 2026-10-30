@@ -275,6 +275,8 @@ Prefs readPrefs()
     p.quantizeRec = v.getProperty ("quantizeRec", p.quantizeRec);
     p.midiClockOut = v.getProperty ("midiClockOut", p.midiClockOut);
     p.link = v.getProperty ("link", p.link);
+    p.bufferSize = juce::jlimit (0, 4096, (int) v.getProperty ("bufferSize", p.bufferSize));
+    p.warnDropouts = v.getProperty ("warnDropouts", p.warnDropouts);
     return p;
 }
 void writePrefs (const Prefs& p)
@@ -285,6 +287,8 @@ void writePrefs (const Prefs& p)
     o->setProperty ("quantizeRec", p.quantizeRec);
     o->setProperty ("midiClockOut", p.midiClockOut);
     o->setProperty ("link", p.link);
+    o->setProperty ("bufferSize", p.bufferSize);
+    o->setProperty ("warnDropouts", p.warnDropouts);
     folder().getChildFile ("prefs.json").replaceWithText (juce::JSON::toString (juce::var (o)));
 }
 } // namespace store

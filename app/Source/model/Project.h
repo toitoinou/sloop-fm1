@@ -38,6 +38,8 @@ struct Prefs
     bool quantizeRec = true;                     // a hit recorded on the nearest step (else between steps)
     bool midiClockOut = false;                   // the MIDI clock and START / STOP out
     bool link = false;                           // Ableton Link: the tempo, the bar and PLAY shared on the network
+    int bufferSize = 0;                          // the audio buffer chosen (frames; 0: the smallest from 128 up)
+    bool warnDropouts = true;                    // offer a larger buffer when the audio drops out
 };
 
 // the projects kept in the app (userApplicationDataDirectory/SLOOP Touch/projects/*.sloop)
